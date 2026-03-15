@@ -311,6 +311,38 @@ If you click outside the slider, the window scrolls to bring the slider there."
     (with-current-buffer (window-buffer window)
       (setq point-before-scroll before-scroll))))
 
+(defun tty-scroll-bar--thumb-geometry (window)
+  "Return (START . END) thumb geometry for WINDOW's TTY scroll bar.
+START and END are 0-indexed row numbers; the thumb occupies rows
+\[START, END) (exclusive END).  Mirrors the formula in C function
+`tty_apply_scroll_bar_glyphs_for_window'."
+  (let* ((buf     (window-buffer window))
+         (win-ht  (window-body-height window))
+         (whole   (buffer-size buf))
+         (pos     (with-current-buffer buf
+                    (- (window-start window) (point-min))))
+         (portion (- (window-end window t) (window-start window))))
+    (if (or (<= whole 0) (>= portion whole))
+        (cons 0 win-ht)
+      (let* ((ta    (floor (* (/ (float pos) whole) win-ht)))
+             (below (- whole pos portion))
+             (tb    (if (> below 0)
+                        (floor (* (/ (float below) whole) win-ht))
+                      0)))
+        (when (and (> pos 0) (= ta 0)) (setq ta 1))
+        (when (and (> below 0) (= tb 0)) (setq tb 1))
+        (let ((ts ta)
+              (te (- win-ht tb)))
+          (when (<= te ts) (setq te (1+ ts)))
+          (setq ts (min ts (1- win-ht)))
+          (setq te (min te win-ht))
+          (when (>= ts te) (setq te (1+ ts)))
+          (cons ts te))))))
+
+(defun tty-scroll-bar--thumb-start (window)
+  "Return the 0-indexed thumb-start row for WINDOW's TTY scroll bar."
+  (car (tty-scroll-bar--thumb-geometry window)))
+
 (defun tty-scroll-bar-drag (event)
   "Scroll a TTY scroll bar window live as the mouse is dragged.
 EVENT is the down-mouse-1 event on the scroll bar handle.
@@ -320,10 +352,17 @@ are decoded through `input-decode-map' during the drag loop.
 Handles both `mouse-movement' events (when the mouse is over the text
 area) and `scroll-bar-movement' events (when the mouse is over the
 scroll bar itself); only the y coordinate is used to scroll, so moving
-horizontally into the text area while dragging still scrolls correctly."
+horizontally into the text area while dragging still scrolls correctly.
+
+The grab point — the row within the thumb where the drag was initiated
+— is preserved throughout the drag, so the thumb follows the cursor
+rather than jumping to align its top edge with the cursor."
   (interactive "e")
-  (let* ((start-pos (event-start event))
-         (window    (nth 0 start-pos)))
+  (let* ((start-pos    (event-start event))
+         (window       (nth 0 start-pos))
+         (click-sb-row (car (nth 2 start-pos)))
+         (grab-offset  (max 0 (- click-sb-row
+                                 (tty-scroll-bar--thumb-start window)))))
     (track-mouse
       (let (done)
         (while (not done)
@@ -334,8 +373,9 @@ horizontally into the text area while dragging still scrolls correctly."
               ;; the event's (PORTION . WHOLE) field directly.
               (let* ((posn   (nth 1 ev))
                      (ratio  (nth 2 posn))
-                     (sb-row (car ratio))
-                     (win-ht (window-body-height window)))
+                     (win-ht (window-body-height window))
+                     (sb-row (max 0 (min (1- win-ht)
+                                         (- (car ratio) grab-offset)))))
                 (when (> win-ht 0)
                   (with-current-buffer (window-buffer window)
                     (goto-char (+ (point-min)
@@ -346,10 +386,11 @@ horizontally into the text area while dragging still scrolls correctly."
              ((mouse-movement-p ev)
               ;; Mouse moved outside the scroll bar (e.g. into the text
               ;; area): use the y coordinate stored by xterm-mouse.
-              (let* ((y      (terminal-parameter nil 'xterm-mouse-y))
+              (let* ((y       (terminal-parameter nil 'xterm-mouse-y))
                      (win-ht  (window-body-height window))
                      (win-top (window-top-line window))
-                     (sb-row  (max 0 (min (1- win-ht) (- y win-top)))))
+                     (sb-row  (max 0 (min (1- win-ht)
+                                          (- (- y win-top) grab-offset)))))
                 (when (> win-ht 0)
                   (with-current-buffer (window-buffer window)
                     (goto-char (+ (point-min)
