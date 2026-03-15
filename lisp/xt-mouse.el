@@ -131,6 +131,58 @@ https://invisible-island.net/xterm/ctlseqs/ctlseqs.html)."
                 (xterm-mouse--handle-mouse-movement)
 		(vector (list 'mouse-movement ev-data))))))))))))
 
+(defun xterm-mouse--tty-scroll-bar-window (x y frame)
+  "Return the window whose TTY scroll bar column is at frame column X, row Y.
+Returns nil if no TTY scroll bar occupies position (X, Y)."
+  (let ((sb-side (frame-parameter frame 'vertical-scroll-bars))
+        result)
+    (when sb-side
+      (walk-windows
+       (lambda (w)
+         (unless result
+           (let* ((sb-col (cond
+                           ((eq sb-side 'left)  (window-left-column w))
+                           ((eq sb-side 'right)
+                            (1- (+ (window-left-column w)
+                                   (window-total-width w))))))
+                  (win-top (window-top-line w))
+                  (win-bot (+ win-top (window-total-height w))))
+             (when (and sb-col
+                        (= x sb-col)
+                        (<= win-top y)
+                        (< y win-bot))
+               (setq result w)))))
+       nil frame))
+    result))
+
+(defun xterm-mouse--tty-scroll-bar-part (window y)
+  "Return the scroll bar part clicked at terminal row Y for WINDOW.
+Returns one of the symbols `above-handle', `handle', or `below-handle'."
+  (let* ((buf         (window-buffer window))
+         (win-height  (window-body-height window))
+         (win-top     (window-top-line window))
+         (sb-row      (max 0 (min (1- win-height) (- y win-top))))
+         (buf-size    (buffer-size buf))
+         (win-start   (window-start window))
+         (win-end     (window-end window t))
+         (portion     (max 1 (- win-end win-start)))
+         (whole       (max portion buf-size))
+         ;; Mirror the C formula: compute track above and below separately.
+         (track-above (if (> whole 0)
+                          (floor (* win-start (/ (float win-height) whole)))
+                        0))
+         (below-chars (max 0 (- whole win-start portion)))
+         (track-below (if (> whole 0)
+                          (floor (* below-chars (/ (float win-height) whole)))
+                        0))
+         (thumb-start track-above)
+         (thumb-end   (- win-height track-below)))
+    (when (>= thumb-end win-height) (setq thumb-end (1- win-height)))
+    (cond
+     ((< sb-row thumb-start)  'above-handle)
+     ((>= sb-row thumb-end)   'below-handle)
+     (t                       'handle))))
+
 (defun xterm-mouse--handle-mouse-movement ()
   "Handle mouse motion that was just generated for XTerm mouse."
   (when-let* ((frame (terminal-parameter nil 'xterm-mouse-frame)))
@@ -341,6 +393,46 @@ which is the \"1006\" extension implemented in Xterm >= 277."
 				  frame)
 				item)
 			  (nthcdr 2 (posn-at-x-y x y (selected-frame)))))))
+             ;; Check for a click in a TTY vertical scroll bar column.
+             ;; When detected, replace the position with a scroll bar
+             ;; position so that [vertical-scroll-bar mouse-N] bindings fire.
+             (sb-window (and (not (display-graphic-p))
+                             frame
+                             (not (eq type 'mouse-movement))
+                             (xterm-mouse--tty-scroll-bar-window x y frame)))
+             (posn (if sb-window
+                       (let* ((win-ht  (window-body-height sb-window))
+                              (win-top (window-top-line sb-window))
+                              (sb-row  (max 0 (min (1- win-ht) (- y win-top))))
+                              (part    (xterm-mouse--tty-scroll-bar-part
+                                        sb-window y))
+                              ;; For button-up events: if the drag started on
+                              ;; the scroll-bar handle, keep part='handle' so
+                              ;; scroll-bar-drag-1 proportionally scrolls to
+                              ;; the release position rather than paging.
+                              (down-ev  (terminal-parameter
+                                         nil 'xterm-mouse-last-down))
+                              (down-part (and down-ev
+                                             (nth 4 (nth 1 down-ev))))
+                              (part     (if (and (not (string-prefix-p
+                                                       "down-"
+                                                       (symbol-name type)))
+                                                 (eq down-part 'handle))
+                                            'handle
+                                          part)))
+                         ;; Build a scroll-bar position in the same format as
+                         ;; make_scroll_bar_position in keyboard.c:
+                         ;;   (window AREA (pos . size) timestamp part)
+                         ;; AREA must be the bare symbol `vertical-scroll-bar'
+                         ;; (not a cons) so that read_key_sequence's SYMBOLP
+                         ;; check expands the event to [vertical-scroll-bar
+                         ;; mouse-1], which fires `scroll-bar-toolkit-scroll'.
+                         (list sb-window
+                               'vertical-scroll-bar
+                               (cons sb-row win-ht)
+                               timestamp
+                               part))
+                     posn))
              (event (list type posn)))
         (setcar (nthcdr 3 posn) timestamp)
 

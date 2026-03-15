@@ -204,7 +204,9 @@ frame_inhibit_resize (struct frame *f, bool horizontal, Lisp_Object parameter)
   return (EQ (frame_inhibit_implied_resize, Qforce)
 	  || (f->after_make_frame
 #ifdef USE_GTK
-	      && f->tool_bar_resized
+	      /* TTY and MSDOS frames have no tool bar and tool_bar_resized
+		 is never set for them; handle them like non-GTK builds.  */
+	      && (f->tool_bar_resized || FRAME_TERMCAP_P (f) || FRAME_MSDOS_P (f))
 #endif
 	      && (EQ (frame_inhibit_implied_resize, Qt)
 		  || (CONSP (frame_inhibit_implied_resize)
@@ -1186,8 +1188,8 @@ make_frame (bool mini_p)
   f->new_width = -1;
   f->new_height = -1;
   f->no_special_glyphs = false;
-#ifdef HAVE_WINDOW_SYSTEM
   f->vertical_scroll_bar_type = vertical_scroll_bar_none;
+#ifdef HAVE_WINDOW_SYSTEM
   f->horizontal_scroll_bars = false;
   f->want_fullscreen = FULLSCREEN_NONE;
   f->undecorated = false;
@@ -1450,11 +1452,7 @@ make_initial_frame (void)
 
   FRAME_FOREGROUND_PIXEL (f) = FACE_TTY_DEFAULT_FG_COLOR;
   FRAME_BACKGROUND_PIXEL (f) = FACE_TTY_DEFAULT_BG_COLOR;
-
-#ifdef HAVE_WINDOW_SYSTEM
   f->vertical_scroll_bar_type = vertical_scroll_bar_none;
-  f->horizontal_scroll_bars = false;
-#endif
 
   /* The default value of menu-bar-mode is t.  */
   set_menu_bar_lines (f, make_fixnum (1), Qnil);
@@ -4175,13 +4173,13 @@ If FRAME is nil, describe the currently selected frame.  */)
       /* Avoid consing in frequent cases.  */
       if (EQ (parameter, Qname))
 	value = f->name;
-#ifdef HAVE_WINDOW_SYSTEM
       /* These are used by vertical motion commands.  */
       else if (EQ (parameter, Qvertical_scroll_bars))
 	value = (f->vertical_scroll_bar_type == vertical_scroll_bar_none
 		 ? Qnil
 		 : (f->vertical_scroll_bar_type == vertical_scroll_bar_left
 		    ? Qleft : Qright));
+#ifdef HAVE_WINDOW_SYSTEM
       else if (EQ (parameter, Qhorizontal_scroll_bars))
 	value = f->horizontal_scroll_bars ? Qt : Qnil;
       else if (EQ (parameter, Qline_spacing) && f->extra_line_spacing == 0)
@@ -4290,6 +4288,8 @@ list, but are otherwise ignored.  */)
 	  if (EQ (prop, Qforeground_color)
 	      || EQ (prop, Qbackground_color))
 	    update_face_from_frame_parameter (f, prop, val);
+	  else if (EQ (prop, Qvertical_scroll_bars))
+	    tty_set_vertical_scroll_bars (f, val);
 	}
 
       if (is_tty_child_frame (f))

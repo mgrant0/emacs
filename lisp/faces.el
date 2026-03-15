@@ -2921,9 +2921,22 @@ used to display the prompt text."
   :group 'frames
   :group 'basic-faces)
 
-(defface scroll-bar '((t nil))
-  "Basic face for the scroll bar colors under X."
+(defface scroll-bar
+  '((((type tty)) :background "black")
+    (t nil))
+  "Basic face for the scroll bar colors under X.
+On TTY frames, this face determines the appearance of the scroll bar
+gutter (track).  The default TTY appearance is a black background."
   :version "21.1"
+  :group 'frames
+  :group 'basic-faces)
+
+(defface scroll-bar-thumb
+  '((((type tty)) :inverse-video t)
+    (t nil))
+  "Basic face for the scroll bar thumb (draggable portion) in TTY frames.
+On character-based terminals, the thumb is rendered as inverse-video spaces."
+  :version "30.1"
   :group 'frames
   :group 'basic-faces)
 

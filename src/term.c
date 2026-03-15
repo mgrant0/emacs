@@ -62,6 +62,13 @@ static int been_here = -1;
 #include "w32term.h"
 #endif
 
+static void tty_set_vertical_scroll_bar (struct window *w,
+					 int portion, int whole, int position);
+static void tty_condemn_scroll_bars (struct frame *f);
+static void tty_redeem_scroll_bar (struct window *w);
+static void tty_judge_scroll_bars (struct frame *f);
+static void tty_set_scroll_bar_default_width (struct frame *f);
+
 #ifndef HAVE_ANDROID
 
 static void tty_set_scroll_region (struct frame *f, int start, int stop);
@@ -976,7 +983,7 @@ tty_write_glyphs (struct frame *f, struct glyph *string, int len)
      since that would scroll the whole frame on some terminals.  */
   if (AutoWrap (tty)
       && curY (tty) + 1 == FRAME_TOTAL_LINES (f)
-      && curX (tty) + len == FRAME_COLS (f)
+      && curX (tty) + len == FrameCols (tty)
       && len > 0)
     {
       /* If writing only one glyph in the last column, make that two so
@@ -4285,7 +4292,15 @@ set_tty_hooks (struct terminal *terminal)
   terminal->delete_terminal_hook = &delete_tty;
 
   terminal->frame_raise_lower_hook = tty_raise_lower_frame;
-  /* Other hooks are NULL by default.  */
+
+  /* Scroll Bar Hooks */
+  terminal->set_vertical_scroll_bar_hook = tty_set_vertical_scroll_bar;
+  terminal->condemn_scroll_bars_hook = tty_condemn_scroll_bars;
+  terminal->redeem_scroll_bar_hook = tty_redeem_scroll_bar;
+  terminal->judge_scroll_bars_hook = tty_judge_scroll_bars;
+  terminal->set_scroll_bar_default_width_hook = tty_set_scroll_bar_default_width;
+
+   /* Other hooks are NULL by default.  */
 }
 
 /* If FD is the controlling terminal, drop it.  */
@@ -4327,6 +4342,96 @@ dissociate_if_controlling_tty (int fd)
 #ifdef HAVE_ANDROID
 _Noreturn
 #endif
+
+/* Set the vertical scroll bar for window W to show PORTION/WHOLE of
+   the buffer, with scroll position POSITION.  Stores the info in the
+   window's vertical_scroll_bar slot as [portion whole position] for
+   later rendering by tty_apply_scroll_bar_glyphs.  */
+static void
+tty_set_vertical_scroll_bar (struct window *w,
+			     int portion, int whole, int position)
+{
+  struct frame *f = XFRAME (WINDOW_FRAME (w));
+
+  if (! FRAME_TERMCAP_P (f))
+    return;
+
+  /* Store scroll bar parameters for later rendering.  We can't render
+     here because build_frame_matrix hasn't been called yet and would
+     overwrite our glyphs.  Instead, tty_apply_scroll_bar_glyphs (called
+     from update_tty_frame after build_frame_matrix) will do the rendering.  */
+  w->vertical_scroll_bar = make_vector (3, make_fixnum (0));
+  ASET (w->vertical_scroll_bar, 0, make_fixnum (portion));
+  ASET (w->vertical_scroll_bar, 1, make_fixnum (whole));
+  ASET (w->vertical_scroll_bar, 2, make_fixnum (position));
+}
+
+static void
+tty_condemn_scroll_bars (struct frame *f)
+{
+}
+
+static void
+tty_redeem_scroll_bar (struct window *w)
+{
+}
+
+static void
+tty_judge_scroll_bars (struct frame *f)
+{
+}
+
+/* Set scroll bar default width for TTY frames: 1 character column.  */
+static void
+tty_set_scroll_bar_default_width (struct frame *f)
+{
+  /* For TTY, scroll bars are 1 character wide.  */
+  FRAME_CONFIG_SCROLL_BAR_WIDTH (f) = 1;
+  FRAME_CONFIG_SCROLL_BAR_COLS (f) = 1;
+}
+
+/* Called from frame.c when the vertical-scroll-bars parameter is changed
+   for a TTY frame.  */
+void
+tty_set_vertical_scroll_bars (struct frame *f, Lisp_Object arg)
+{
+  if (! FRAME_TERMCAP_P (f))
+    return;
+
+  enum vertical_scroll_bar_type new_type
+    = (NILP (arg)
+       ? vertical_scroll_bar_none
+       : EQ (Qleft, arg)
+       ? vertical_scroll_bar_left
+       : EQ (Qright, arg)
+       ? vertical_scroll_bar_right
+       : EQ (Qleft, Vdefault_frame_scroll_bars)
+       ? vertical_scroll_bar_left
+       : EQ (Qright, Vdefault_frame_scroll_bars)
+       ? vertical_scroll_bar_right
+       : vertical_scroll_bar_none);
+
+  if (FRAME_VERTICAL_SCROLL_BAR_TYPE (f) == new_type)
+    return;
+
+  FRAME_VERTICAL_SCROLL_BAR_TYPE (f) = new_type;
+
+  /* Set the scroll bar width if enabling scroll bars.  */
+  if (new_type != vertical_scroll_bar_none
+      && FRAME_TERMINAL (f)->set_scroll_bar_default_width_hook)
+    (*FRAME_TERMINAL (f)->set_scroll_bar_default_width_hook) (f);
+
+  /* Trigger a full redisplay.  adjust_frame_size recalculates window
+     text areas to account for the newly-reserved scroll bar columns.
+     When only the scroll bar side changes (e.g. right→left) all frame
+     dimensions stay identical and adjust_frame_size returns early
+     without calling adjust_frame_glyphs.  Call it explicitly so that
+     the glyph matrix TEXT_AREA pointers (shifted by sbl/sbr) are
+     always updated to match the new scroll bar layout.  */
+  adjust_frame_size (f, -1, -1, 3, 0, Qvertical_scroll_bars);
+  adjust_frame_glyphs (f);
+  SET_FRAME_GARBAGED (f);
+}
 
 struct terminal *
 init_tty (const char *name, const char *terminal_type, bool must_succeed)

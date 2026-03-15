@@ -467,17 +467,35 @@ adjust_glyph_matrix (struct window *w, struct glyph_matrix *matrix, int x, int y
 	    }
 	  else
 	    {
+	      /* For TTY frames with character-based scroll bars, reserve
+		 columns at the left or right edge of each window row.
+		 The scroll bar columns are at glyphs[LEFT_MARGIN_AREA][0..sbl-1]
+		 (left scroll bar) or glyphs[LAST_AREA][0..sbr-1] (right).
+		 TEXT_AREA and RIGHT_MARGIN_AREA are shifted accordingly so
+		 the text iterator doesn't overwrite scroll bar columns.  */
+	      int sbl = 0, sbr = 0;
+	      if (w && !FRAME_WINDOW_P (XFRAME (w->frame))
+		  && !MINI_WINDOW_P (w))
+		{
+		  sbl = (WINDOW_HAS_VERTICAL_SCROLL_BAR_ON_LEFT (w)
+			 ? WINDOW_SCROLL_BAR_COLS (w) : 0);
+		  sbr = (WINDOW_HAS_VERTICAL_SCROLL_BAR_ON_RIGHT (w)
+			 ? WINDOW_SCROLL_BAR_COLS (w) : 0);
+		}
 	      row->glyphs[TEXT_AREA]
-		= row->glyphs[LEFT_MARGIN_AREA] + left;
+		= row->glyphs[LEFT_MARGIN_AREA] + sbl + left;
 	      row->glyphs[RIGHT_MARGIN_AREA]
-		= row->glyphs[TEXT_AREA] + dim.width - left - right;
-	      /* Leave room for a border glyph.  */
+		= row->glyphs[TEXT_AREA] + dim.width - sbl - sbr - left - right;
+	      /* Leave room for a border glyph unless the window has a right
+		 scroll bar (which serves as the visual separator).  */
 	      if (!FRAME_WINDOW_P (XFRAME (w->frame))
 		  && !WINDOW_RIGHTMOST_P (w)
-		  && right > 0)
+		  && right > 0
+		  && sbr == 0)
 		row->glyphs[RIGHT_MARGIN_AREA] -= 1;
+	      /* LAST_AREA ends before the right scroll bar columns.  */
 	      row->glyphs[LAST_AREA]
-		= row->glyphs[LEFT_MARGIN_AREA] + dim.width;
+		= row->glyphs[LEFT_MARGIN_AREA] + dim.width - sbr;
 	    }
 	}
 
@@ -2088,6 +2106,16 @@ adjust_frame_glyphs_for_frame_redisplay (struct frame *f)
   pool_changed_p = realloc_glyph_pool (f->desired_pool, matrix_dim);
   realloc_glyph_pool (f->current_pool, matrix_dim);
 
+  /* For TTY frames the TEXT_AREA glyph pointer offset within each
+     pool row depends on the scroll bar column count (sbl/sbr computed
+     in adjust_glyph_matrix).  When the scroll bar type changes the
+     pool and window sizes stay the same, so the normal pool_changed_p
+     / window_change_flags detection misses the change.  Always force
+     matrix re-adjustment for TTY frames so any change in sbl/sbr is
+     picked up immediately.  */
+  if (!FRAME_WINDOW_P (f))
+    pool_changed_p = true;
+
   /* Set up glyph pointers within window matrices.  Do this only if
      absolutely necessary since it requires a frame redraw.  */
   if (pool_changed_p || window_change_flags)
@@ -2577,8 +2605,10 @@ build_frame_matrix_from_leaf_window (struct glyph_matrix *frame_matrix, struct w
     {
       window_matrix = w->desired_matrix;
 
-      /* Decide whether we want to add a vertical border glyph.  */
-      if (!WINDOW_RIGHTMOST_P (w))
+      /* Decide whether we want to add a vertical border glyph.  Skip
+	 it if the window has a right scroll bar (it acts as separator).  */
+      if (!WINDOW_RIGHTMOST_P (w)
+	  && !WINDOW_HAS_VERTICAL_SCROLL_BAR_ON_RIGHT (w))
 	{
 	  struct Lisp_Char_Table *dp = window_display_table (w);
 	  Lisp_Object gc;
@@ -3908,10 +3938,158 @@ flush_terminal (struct frame *f)
   fflush (FRAME_TTY (f)->output);
 }
 
+/* Apply TTY character-based scroll bar glyphs for window W into the
+   desired matrix of its frame.  Called recursively for the window tree.  */
+static void
+tty_apply_scroll_bar_glyphs_for_window (struct frame *f, struct window *w)
+{
+  if (!WINDOW_LEAF_P (w))
+    {
+      /* Internal window: recurse into children.  */
+      struct window *child = XWINDOW (w->contents);
+      while (child)
+	{
+	  tty_apply_scroll_bar_glyphs_for_window (f, child);
+	  child = NILP (child->next) ? NULL : XWINDOW (child->next);
+	}
+      return;
+    }
+
+  /* Leaf window: draw scroll bar if active.  Skip minibuffer windows;
+     they occupy the last terminal row and writing 80 glyphs there would
+     trigger cmcheckmagic.  Minibuffer windows don't show scroll bars on
+     GUI either, so this is consistent behaviour.  */
+  if (MINI_WINDOW_P (w))
+    return;
+  if (!WINDOW_HAS_VERTICAL_SCROLL_BAR (w))
+    return;
+
+  /* Retrieve stored scroll bar parameters set by tty_set_vertical_scroll_bar.  */
+  Lisp_Object sb_data = w->vertical_scroll_bar;
+  if (!VECTORP (sb_data) || ASIZE (sb_data) < 3)
+    return;
+
+  int portion  = XFIXNUM (AREF (sb_data, 0));
+  int whole    = XFIXNUM (AREF (sb_data, 1));
+  int position = XFIXNUM (AREF (sb_data, 2));
+
+  struct glyph_matrix *matrix = f->desired_matrix;
+  if (!matrix)
+    return;
+
+  /* Window rows in the frame matrix.  */
+  int frame_y_top = w->desired_matrix->matrix_y;
+  int nrows = WINDOW_TOTAL_LINES (w);
+  /* Exclude mode line.  */
+  if (window_wants_mode_line (w))
+    nrows--;
+  /* Skip header/tab line rows at top.  */
+  int top_skip = 0;
+  if (window_wants_tab_line (w))
+    top_skip++;
+  if (window_wants_header_line (w))
+    top_skip++;
+
+  if (nrows <= top_skip)
+    return;
+  int sb_rows = nrows - top_skip;  /* usable rows for scroll bar */
+
+  /* Compute the scroll bar column in frame coordinates.  */
+  int sb_cols = WINDOW_SCROLL_BAR_COLS (w);
+  int frame_col;
+  if (WINDOW_HAS_VERTICAL_SCROLL_BAR_ON_LEFT (w))
+    frame_col = WINDOW_LEFT_EDGE_COL (w);
+  else
+    frame_col = WINDOW_RIGHT_EDGE_COL (w) - sb_cols;
+
+  /* Compute thumb position within sb_rows.
+     The hook passes: portion = visible chars, whole = total chars,
+     position = char position of first visible line.
+     When the whole buffer fits in the window, portion >= whole and the
+     thumb spans the full bar.
+
+     We compute the track regions above and below the thumb by rounding
+     each down separately.  This keeps the thumb height constant as the
+     user scrolls: the thumb always abuts the top rail when position==0
+     and the bottom rail when position+portion==whole.  */
+  int thumb_start = 0, thumb_end = sb_rows;
+  if (whole > 0 && portion < whole)
+    {
+      int track_above = (int) ((double) position / whole * sb_rows);
+      ptrdiff_t below_chars = (ptrdiff_t) whole - position - portion;
+      int track_below = (below_chars > 0)
+	? (int) ((double) below_chars / whole * sb_rows) : 0;
+      /* When content exists beyond the visible area but the proportional
+	 track size rounds to zero, ensure at least 1 track row so the
+	 thumb never appears full-height when the buffer is not fully
+	 visible.  */
+      if (position > 0 && track_above == 0)
+	track_above = 1;
+      if (below_chars > 0 && track_below == 0)
+	track_below = 1;
+      thumb_start = track_above;
+      thumb_end   = sb_rows - track_below;
+      /* Guarantee at least a 1-row thumb.  */
+      if (thumb_end <= thumb_start)
+	thumb_end = thumb_start + 1;
+      thumb_start = min (thumb_start, sb_rows - 1);
+      thumb_end   = min (thumb_end,   sb_rows);
+      if (thumb_start >= thumb_end)
+	thumb_end = thumb_start + 1;
+    }
+
+  /* Write scroll bar glyphs into the frame desired matrix.  */
+  for (int r = 0; r < sb_rows; r++)
+    {
+      int frame_row = frame_y_top + top_skip + r;
+      if (frame_row >= matrix->nrows)
+	break;
+
+      struct glyph_row *frow = matrix->rows + frame_row;
+
+      /* Determine face: thumb (inverse video) or track (dark background).  */
+      int face_id = (r >= thumb_start && r < thumb_end)
+	? SCROLL_BAR_THUMB_FACE_ID : SCROLL_BAR_FACE_ID;
+
+      /* Write sb_cols scroll bar glyphs into the frame row.  */
+      struct glyph *g = frow->glyphs[TEXT_AREA] + frame_col;
+      for (int c = 0; c < sb_cols; c++, g++)
+	{
+	  g->type = CHAR_GLYPH;
+	  g->u.ch = ' ';
+	  g->face_id = face_id;
+	  g->padding_p = false;
+	  g->charpos = -1;
+	  g->frame = f;
+	}
+      /* Ensure the used count covers the scroll bar column.  */
+      int need = frame_col + sb_cols;
+      if (frow->used[TEXT_AREA] < need)
+	frow->used[TEXT_AREA] = need;
+      /* Mark the row enabled so it gets written to the terminal.  */
+      frow->enabled_p = true;
+    }
+}
+
+/* Apply character-based scroll bar glyphs to frame F's desired matrix.
+   Called after build_frame_matrix so fill_up_glyph_row_with_spaces has
+   run, and we can safely overwrite the scroll bar columns.  */
+static void
+tty_apply_scroll_bar_glyphs (struct frame *f)
+{
+  if (!f->desired_matrix)
+    return;
+  tty_apply_scroll_bar_glyphs_for_window (f, XWINDOW (f->root_window));
+}
+
 static void
 update_tty_frame (struct frame *f)
 {
   build_frame_matrix (f);
+  /* Apply character-based scroll bar glyphs after fill_up_glyph_row_with_spaces
+     has run (which is called from build_frame_matrix).  */
+  if (FRAME_TERMCAP_P (f))
+    tty_apply_scroll_bar_glyphs (f);
 }
 
 #ifndef HAVE_ANDROID
@@ -3937,6 +4115,11 @@ abs_cursor_pos (struct frame *f, int *x, int *y)
       int wx = window_to_frame_hpos (w, w->cursor.hpos);
       int wy = window_to_frame_vpos (w, w->cursor.vpos);
 
+      /* cursor.hpos is TEXT_AREA-relative; account for the left scroll
+	 bar width so the absolute cursor position is in the text area.
+	 Mini-windows have no scroll bar even when the frame does.  */
+      if (!MINI_WINDOW_P (w))
+	wx += WINDOW_LEFT_SCROLL_BAR_COLS (w);
       wx += max (0, w->left_margin_cols);
 
       root_xy (f, wx, wy, x, y);
@@ -5741,6 +5924,12 @@ tty_set_cursor (struct frame *f)
 	  int x = window_to_frame_hpos (w, w->cursor.hpos);
 	  int y = window_to_frame_vpos (w, w->cursor.vpos);
 
+	  /* cursor.hpos is TEXT_AREA-relative; add the left scroll bar
+	     width so the terminal cursor lands in the text area, not in
+	     the scroll bar column.  Mini-windows have no scroll bar even
+	     when the frame does, so skip the offset for them.  */
+	  if (!MINI_WINDOW_P (w))
+	    x += WINDOW_LEFT_SCROLL_BAR_COLS (w);
 	  x += max (0, w->left_margin_cols);
 	  cursor_to (f, y, x);
 	}

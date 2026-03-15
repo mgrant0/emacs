@@ -452,16 +452,17 @@ struct frame
      via mouse clicks or by moving the mouse into it.  */
   bool_bf no_accept_focus : 1;
 
+  /* If not vertical_scroll_bar_none, we should actually display the
+     scroll bars of this type on this frame.  Available on all frame
+     types, including TTY frames for character-based scroll bars.  */
+  ENUM_BF (vertical_scroll_bar_type) vertical_scroll_bar_type : 2;
+
 #ifdef HAVE_WINDOW_SYSTEM
   /* True if this frame is a tooltip frame.  */
   bool_bf tooltip : 1;
 
   /* See FULLSCREEN_ enum on top.  */
   ENUM_BF (fullscreen_type) want_fullscreen : 4;
-
-  /* If not vertical_scroll_bar_none, we should actually
-     display the scroll bars of this type on this frame.  */
-  ENUM_BF (vertical_scroll_bar_type) vertical_scroll_bar_type : 2;
 
   /* Nonzero if we should actually display horizontal scroll bars on this frame.  */
   bool_bf horizontal_scroll_bars : 1;
@@ -1211,9 +1212,8 @@ default_pixels_per_inch_y (void)
 #define FRAME_DELETEN_COST(f) (f)->delete_n_lines_cost
 #define FRAME_FOCUS_FRAME(f) f->focus_frame
 
-#ifdef HAVE_WINDOW_SYSTEM
 /* This frame slot says whether scroll bars are currently enabled for frame F,
-   and which side they are on.  */
+   and which side they are on.  Works for all frame types including TTY.  */
 #define FRAME_VERTICAL_SCROLL_BAR_TYPE(f) ((f)->vertical_scroll_bar_type)
 #define FRAME_HAS_VERTICAL_SCROLL_BARS(f) \
   ((f)->vertical_scroll_bar_type != vertical_scroll_bar_none)
@@ -1221,14 +1221,6 @@ default_pixels_per_inch_y (void)
   ((f)->vertical_scroll_bar_type == vertical_scroll_bar_left)
 #define FRAME_HAS_VERTICAL_SCROLL_BARS_ON_RIGHT(f) \
   ((f)->vertical_scroll_bar_type == vertical_scroll_bar_right)
-#else /* not HAVE_WINDOW_SYSTEM */
-/* If there is no window system, there are no scroll bars.  */
-#define FRAME_VERTICAL_SCROLL_BAR_TYPE(f) \
-  ((void) (f), vertical_scroll_bar_none)
-#define FRAME_HAS_VERTICAL_SCROLL_BARS(f) ((void) (f), 0)
-#define FRAME_HAS_VERTICAL_SCROLL_BARS_ON_LEFT(f) ((void) (f), 0)
-#define FRAME_HAS_VERTICAL_SCROLL_BARS_ON_RIGHT(f) ((void) (f), 0)
-#endif /* HAVE_WINDOW_SYSTEM */
 
 INLINE struct frame *
 FRAME_PARENT_FRAME (struct frame *f)
@@ -1503,6 +1495,7 @@ window_system_available (struct frame *f)
 
 extern WINDOW_SYSTEM_RETURN void check_window_system (struct frame *);
 struct frame *decode_tty_frame (Lisp_Object frame);
+extern void tty_set_vertical_scroll_bars (struct frame *, Lisp_Object);
 extern void frame_make_pointer_invisible (struct frame *);
 extern void frame_make_pointer_visible (struct frame *);
 extern struct frame *root_frame (struct frame *f);

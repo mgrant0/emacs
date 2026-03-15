@@ -124,6 +124,16 @@ Setting the variable with a customization buffer also takes effect."
 ;; If it is set again, that is for real.
 (setq scroll-bar-mode-explicit t)
 
+(defun scroll-bar--tty-frame-setup ()
+  "Apply `scroll-bar-mode' to TTY frames at startup.
+TTY frames don't go through the GUI frame-parameter initialization
+that would apply `scroll-bar-mode' during frame creation, so we
+apply it explicitly here via `window-setup-hook'."
+  (when scroll-bar-mode
+    (set-scroll-bar-mode scroll-bar-mode)))
+
+(add-hook 'window-setup-hook #'scroll-bar--tty-frame-setup)
+
 (defun get-scroll-bar-mode ()
   (declare (gv-setter set-scroll-bar-mode))
   scroll-bar-mode)
@@ -300,6 +310,65 @@ If you click outside the slider, the window scrolls to bring the slider there."
     (sit-for 0)
     (with-current-buffer (window-buffer window)
       (setq point-before-scroll before-scroll))))
+
+(defun tty-scroll-bar-drag (event)
+  "Scroll a TTY scroll bar window live as the mouse is dragged.
+EVENT is the down-mouse-1 event on the scroll bar handle.
+Uses `read-key' (not `read-event') so that xterm mouse escape sequences
+are decoded through `input-decode-map' during the drag loop.
+
+Handles both `mouse-movement' events (when the mouse is over the text
+area) and `scroll-bar-movement' events (when the mouse is over the
+scroll bar itself); only the y coordinate is used to scroll, so moving
+horizontally into the text area while dragging still scrolls correctly."
+  (interactive "e")
+  (let* ((start-pos (event-start event))
+         (window    (nth 0 start-pos)))
+    (track-mouse
+      (let (done)
+        (while (not done)
+          (let ((ev (read-key)))
+            (cond
+             ((eq (car-safe ev) 'scroll-bar-movement)
+              ;; Mouse moved within the scroll bar: extract sb-row from
+              ;; the event's (PORTION . WHOLE) field directly.
+              (let* ((posn   (nth 1 ev))
+                     (ratio  (nth 2 posn))
+                     (sb-row (car ratio))
+                     (win-ht (window-body-height window)))
+                (when (> win-ht 0)
+                  (with-current-buffer (window-buffer window)
+                    (goto-char (+ (point-min)
+                                  (/ (* sb-row (- (point-max) (point-min)))
+                                     win-ht)))
+                    (vertical-motion 0 window)
+                    (set-window-start window (point))))))
+             ((mouse-movement-p ev)
+              ;; Mouse moved outside the scroll bar (e.g. into the text
+              ;; area): use the y coordinate stored by xterm-mouse.
+              (let* ((y      (terminal-parameter nil 'xterm-mouse-y))
+                     (win-ht  (window-body-height window))
+                     (win-top (window-top-line window))
+                     (sb-row  (max 0 (min (1- win-ht) (- y win-top)))))
+                (when (> win-ht 0)
+                  (with-current-buffer (window-buffer window)
+                    (goto-char (+ (point-min)
+                                  (/ (* sb-row (- (point-max) (point-min)))
+                                     win-ht)))
+                    (vertical-motion 0 window)
+                    (set-window-start window (point))))))
+             (t
+              (setq done t)))))))))
+
+(defun tty-scroll-bar-down-mouse-1 (event)
+  "Handle down-mouse-1 on a TTY vertical scroll bar.
+When clicked on the thumb handle, initiate live drag scrolling via
+`tty-scroll-bar-drag'.  When clicked above or below the handle, do
+nothing so that the subsequent button-up event fires
+`scroll-bar-toolkit-scroll' to page up or down."
+  (interactive "e")
+  (when (eq (nth 4 (event-start event)) 'handle)
+    (tty-scroll-bar-drag event)))
 
 ;; Scroll the window to the proper position for EVENT.
 (defun scroll-bar-horizontal-drag-1 (event)
@@ -494,12 +563,34 @@ EVENT should be a scroll bar click."
        (global-set-key [vertical-scroll-bar mouse-1]
 		       'scroll-bar-toolkit-scroll)
        (global-set-key [horizontal-scroll-bar mouse-1]
-		       'scroll-bar-toolkit-horizontal-scroll))
-      (t
-       (global-set-key [vertical-scroll-bar mouse-1]
-		       'scroll-bar-scroll-up)
+		       'scroll-bar-toolkit-horizontal-scroll)
+       ;; Also bind the TTY live-drag key so that `src/emacs -nw' in a
+       ;; toolkit build uses the same drag handler as non-toolkit builds.
+       ;; In graphical frames the toolkit delivers drags as mouse-1
+       ;; (not down-mouse-1), so this binding does not conflict.
+       (global-set-key [vertical-scroll-bar down-mouse-1]
+		       'tty-scroll-bar-down-mouse-1)
+       ;; When a TTY drag ends outside the scroll bar column, the release
+       ;; event becomes drag-mouse-1; handle it like a click on the end
+       ;; position so the buffer still scrolls proportionally.
        (global-set-key [vertical-scroll-bar drag-mouse-1]
-		       'scroll-bar-scroll-up)
+		       'scroll-bar-toolkit-scroll))
+      (t
+       ;; TTY (character-based) scroll bars include part information
+       ;; (above-handle, handle, below-handle).
+       ;;
+       ;; down-mouse-1 is bound to `tty-scroll-bar-down-mouse-1': when
+       ;; the thumb handle is clicked it enters a live-drag loop using
+       ;; `read-key' (which decodes xterm escape sequences); clicking
+       ;; above/below the handle is a no-op so the button-up event falls
+       ;; through to `scroll-bar-toolkit-scroll' for page up/down.
+       (global-set-key [vertical-scroll-bar down-mouse-1]
+		       'tty-scroll-bar-down-mouse-1)
+       (global-set-key [vertical-scroll-bar mouse-1]
+		       'scroll-bar-toolkit-scroll)
+       ;; Dragging the thumb: treat it as a click on the final position.
+       (global-set-key [vertical-scroll-bar drag-mouse-1]
+		       'scroll-bar-toolkit-scroll)
        (global-set-key [vertical-scroll-bar down-mouse-2]
 		       'scroll-bar-drag)
        (global-set-key [vertical-scroll-bar mouse-3]
