@@ -1100,7 +1100,19 @@ window_body_width (struct window *w, enum window_body_unit pixelwise)
   int width = (w->pixel_width
 	       - WINDOW_RIGHT_DIVIDER_WIDTH (w)
 	       - (WINDOW_HAS_VERTICAL_SCROLL_BAR (w)
-		  ? WINDOW_SCROLL_BAR_AREA_WIDTH (w)
+		  ? (WINDOW_SCROLL_BAR_AREA_WIDTH (w)
+		     /* On TTY frames a right scroll bar acts as the window
+			separator, so we reserve one extra character column
+			for the '|' border glyph that
+			build_frame_matrix_from_leaf_window inserts.  This
+			keeps the border visually separate from the scroll bar
+			indicator (thumb/track) even when the buffer is short
+			enough to fill the bar with a full-height thumb.
+			Left scroll bars already have a dedicated border column
+			(the condition below), so this adjustment is right-only.  */
+		     + (!FRAME_WINDOW_P (f)
+			&& !WINDOW_RIGHTMOST_P (w)
+			&& WINDOW_HAS_VERTICAL_SCROLL_BAR_ON_RIGHT (w)))
 		  : (/* A vertical bar is either 1 or 0.  */
 		     !FRAME_WINDOW_P (f)
 		     && !WINDOW_RIGHTMOST_P (w)

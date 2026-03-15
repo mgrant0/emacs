@@ -140,11 +140,26 @@ Returns nil if no TTY scroll bar occupies position (X, Y)."
       (walk-windows
        (lambda (w)
          (unless result
-           (let* ((sb-col (cond
-                           ((eq sb-side 'left)  (window-left-column w))
-                           ((eq sb-side 'right)
-                            (1- (+ (window-left-column w)
-                                   (window-total-width w))))))
+           (let* ((right-edge (+ (window-left-column w)
+                                 (window-total-width w)))
+                  (sb-col
+                   (cond
+                    ((eq sb-side 'left) (window-left-column w))
+                    ((eq sb-side 'right)
+                     ;; On TTY frames a right scroll bar on a non-rightmost
+                     ;; window has its indicator one column left of the last
+                     ;; column, which holds the '|' border glyph.  Layout:
+                     ;; [content][SB][|].  On the rightmost window there is
+                     ;; no '|', so the SB occupies the last column as usual.
+                     ;;
+                     ;; NOTE: (frame-width) returns the TEXT-area column
+                     ;; count (excluding the SB column), so the rightmost
+                     ;; window has right-edge = (1+ (frame-width frame)).
+                     (if (and (not (display-graphic-p))
+                              (/= right-edge
+                                  (1+ (frame-width (window-frame w)))))
+                         (- right-edge 2)
+                       (1- right-edge)))))
                   (win-top (window-top-line w))
                   (win-bot (+ win-top (window-total-height w))))
              (when (and sb-col
@@ -154,6 +169,29 @@ Returns nil if no TTY scroll bar occupies position (X, Y)."
                (setq result w)))))
        nil frame))
     result))
+
+(defun xterm-mouse--tty-vertical-border-window (x y frame)
+  "Return the window whose TTY `|' border column is at frame column X, row Y.
+Returns nil unless (X, Y) is on the `|' border of a non-rightmost TTY
+window with a right scroll bar.  In that layout, [content][SB][|], the
+`|' occupies the last column of the window's total-width allocation."
+  (when (and (not (display-graphic-p))
+             (eq (frame-parameter frame 'vertical-scroll-bars) 'right))
+    (let (result)
+      (walk-windows
+       (lambda (w)
+         (unless result
+           (let* ((right-edge (+ (window-left-column w)
+                                 (window-total-width w)))
+                  (win-top (window-top-line w))
+                  (win-bot (+ win-top (window-total-height w))))
+             (when (and (/= right-edge (1+ (frame-width (window-frame w))))
+                        (= x (1- right-edge))
+                        (<= win-top y)
+                        (< y win-bot))
+               (setq result w)))))
+       nil frame)
+      result)))
 
 (defun xterm-mouse--tty-scroll-bar-part (window y)
   "Return the scroll bar part clicked at terminal row Y for WINDOW.
@@ -432,6 +470,19 @@ which is the \"1006\" extension implemented in Xterm >= 277."
                                (cons sb-row win-ht)
                                timestamp
                                part))
+                     posn))
+             ;; Check for a click on the TTY '|' window border.
+             ;; For a right scroll bar on a non-rightmost TTY window the '|'
+             ;; glyph occupies the last column of the window allocation; a
+             ;; click there should generate a vertical-line position so that
+             ;; [vertical-line down-mouse-1] → mouse-drag-vertical-line fires.
+             (border-window (and (not sb-window)
+                                 frame
+                                 (not (eq type 'mouse-movement))
+                                 (xterm-mouse--tty-vertical-border-window
+                                  x y frame)))
+             (posn (if border-window
+                       (list border-window 'vertical-line (cons x y) timestamp)
                      posn))
              (event (list type posn)))
         (setcar (nthcdr 3 posn) timestamp)

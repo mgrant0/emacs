@@ -860,7 +860,16 @@ relative to the root frame.  Otherwise, return the position of the mouse
 relative to the selected frame, unless the current drag operation was
 produced from a touch screen event, in which event, return the position
 of the active touch-screen tool relative to the same."
-  (if tty (mouse-position-in-root-frame)
+  (if tty
+      ;; mouse-position-in-root-frame reads from the GPM mouse hook,
+      ;; which is not updated by xterm mouse events.  When xterm mouse
+      ;; mode is active the coordinates are stored as terminal parameters
+      ;; by xterm-mouse-event; use those when available.
+      (let ((xt-x (terminal-parameter nil 'xterm-mouse-x))
+            (xt-y (terminal-parameter nil 'xterm-mouse-y)))
+        (if (and xt-x xt-y)
+            (cons xt-x xt-y)
+          (mouse-position-in-root-frame)))
     (or (touch-screen-last-drag-position)
         (mouse-absolute-pixel-position))))
 

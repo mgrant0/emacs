@@ -2106,15 +2106,23 @@ adjust_frame_glyphs_for_frame_redisplay (struct frame *f)
   pool_changed_p = realloc_glyph_pool (f->desired_pool, matrix_dim);
   realloc_glyph_pool (f->current_pool, matrix_dim);
 
-  /* For TTY frames the TEXT_AREA glyph pointer offset within each
-     pool row depends on the scroll bar column count (sbl/sbr computed
-     in adjust_glyph_matrix).  When the scroll bar type changes the
-     pool and window sizes stay the same, so the normal pool_changed_p
-     / window_change_flags detection misses the change.  Always force
-     matrix re-adjustment for TTY frames so any change in sbl/sbr is
-     picked up immediately.  */
+  /* When the TTY scroll bar type changes, sbl/sbr (computed in
+     adjust_glyph_matrix) change too, so the TEXT_AREA glyph pointer
+     offsets within each pool row must be updated.  Because neither the
+     pool size nor the window sizes change in that case, the normal
+     pool_changed_p / window_change_flags detection misses it.
+     Use config_scroll_bar_height (unused by TTY frames) to track the
+     last-seen scroll bar type and force re-adjustment only on change.  */
   if (!FRAME_WINDOW_P (f))
-    pool_changed_p = true;
+    {
+      enum vertical_scroll_bar_type cur_sb
+	= FRAME_VERTICAL_SCROLL_BAR_TYPE (f);
+      if ((int) cur_sb != f->config_scroll_bar_height)
+	{
+	  f->config_scroll_bar_height = (int) cur_sb;
+	  pool_changed_p = true;
+	}
+    }
 
   /* Set up glyph pointers within window matrices.  Do this only if
      absolutely necessary since it requires a frame redraw.  */
@@ -2605,10 +2613,14 @@ build_frame_matrix_from_leaf_window (struct glyph_matrix *frame_matrix, struct w
     {
       window_matrix = w->desired_matrix;
 
-      /* Decide whether we want to add a vertical border glyph.  Skip
-	 it if the window has a right scroll bar (it acts as separator).  */
+      /* Decide whether we want to add a vertical border glyph between
+	 horizontally adjacent windows.  For TTY frames we always insert
+	 '|' at LAST_AREA-1: with a right scroll bar, window_body_width
+	 now reserves that column explicitly so the border and the scroll
+	 bar indicator (one column further right) are visually distinct.  */
       if (!WINDOW_RIGHTMOST_P (w)
-	  && !WINDOW_HAS_VERTICAL_SCROLL_BAR_ON_RIGHT (w))
+	  && (!WINDOW_HAS_VERTICAL_SCROLL_BAR_ON_RIGHT (w)
+	      || !FRAME_WINDOW_P (f)))
 	{
 	  struct Lisp_Char_Table *dp = window_display_table (w);
 	  Lisp_Object gc;
@@ -2690,7 +2702,23 @@ build_frame_matrix_from_leaf_window (struct glyph_matrix *frame_matrix, struct w
 	     windows.  */
 	  if (GLYPH_CHAR (right_border_glyph) != 0)
 	    {
-	      struct glyph *border = window_row->glyphs[LAST_AREA] - 1;
+	      struct glyph *border;
+	      /* For TTY frames with a right scroll bar, the normal
+		 border position (LAST_AREA - 1) is used for the scroll
+		 bar indicator; tty_apply_scroll_bar_glyphs shifts the SB
+		 one column left to make room.  Place '|' at LAST_AREA[0]
+		 (the SB slot) so the layout is [content][SB][|].  */
+	      if (!FRAME_WINDOW_P (f)
+		  && WINDOW_HAS_VERTICAL_SCROLL_BAR_ON_RIGHT (w))
+		{
+		  border = window_row->glyphs[LAST_AREA];
+		  /* Extend the used count to cover this extra column.  */
+		  int need = (int)(border - frame_row->glyphs[TEXT_AREA]) + 1;
+		  if (frame_row->used[TEXT_AREA] < need)
+		    frame_row->used[TEXT_AREA] = need;
+		}
+	      else
+		border = window_row->glyphs[LAST_AREA] - 1;
 	      /* It's a subtle bug if we are overwriting some non-char
 		 glyph with the vertical border glyph.  */
 	      eassert (border->type == CHAR_GLYPH);
@@ -4002,6 +4030,18 @@ tty_apply_scroll_bar_glyphs_for_window (struct frame *f, struct window *w)
   else
     frame_col = WINDOW_RIGHT_EDGE_COL (w) - sb_cols;
 
+  /* For a right scroll bar on a non-rightmost TTY window, the last
+     column of the window allocation holds the '|' border glyph
+     (placed there by build_frame_matrix_from_leaf_window).  Shift the
+     SB indicator one column left so the layout becomes
+     [content][SB][|] rather than [content][|][SB].  */
+  bool right_border
+    = (!FRAME_WINDOW_P (f)
+       && WINDOW_HAS_VERTICAL_SCROLL_BAR_ON_RIGHT (w)
+       && !WINDOW_RIGHTMOST_P (w));
+  if (right_border)
+    frame_col -= 1;
+
   /* Compute thumb position within sb_rows.
      The hook passes: portion = visible chars, whole = total chars,
      position = char position of first visible line.
@@ -4048,8 +4088,8 @@ tty_apply_scroll_bar_glyphs_for_window (struct frame *f, struct window *w)
       struct glyph_row *frow = matrix->rows + frame_row;
 
       /* Determine face: thumb (inverse video) or track (dark background).  */
-      int face_id = (r >= thumb_start && r < thumb_end)
-	? SCROLL_BAR_THUMB_FACE_ID : SCROLL_BAR_FACE_ID;
+      bool is_thumb = (r >= thumb_start && r < thumb_end);
+      int face_id = is_thumb ? SCROLL_BAR_THUMB_FACE_ID : SCROLL_BAR_FACE_ID;
 
       /* Write sb_cols scroll bar glyphs into the frame row.  */
       struct glyph *g = frow->glyphs[TEXT_AREA] + frame_col;
@@ -4062,8 +4102,9 @@ tty_apply_scroll_bar_glyphs_for_window (struct frame *f, struct window *w)
 	  g->charpos = -1;
 	  g->frame = f;
 	}
-      /* Ensure the used count covers the scroll bar column.  */
-      int need = frame_col + sb_cols;
+      /* Ensure the used count covers the scroll bar column, and for the
+	 right-border case also the '|' glyph one column to its right.  */
+      int need = frame_col + sb_cols + (right_border ? 1 : 0);
       if (frow->used[TEXT_AREA] < need)
 	frow->used[TEXT_AREA] = need;
       /* Mark the row enabled so it gets written to the terminal.  */
