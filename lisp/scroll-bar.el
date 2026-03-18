@@ -92,6 +92,7 @@ SIDE must be the symbol `left' or `right'."
   "Non-nil means `set-scroll-bar-mode' should really do something.
 This is nil while loading `scroll-bar.el', and t afterward.")
 
+;;;###autoload
 (defun set-scroll-bar-mode (value)
   "Set the scroll bar mode to VALUE and put the new value into effect.
 See the `scroll-bar-mode' variable for possible values to use."
@@ -104,6 +105,7 @@ See the `scroll-bar-mode' variable for possible values to use."
     (modify-all-frames-parameters (list (cons 'vertical-scroll-bars
 					      scroll-bar-mode)))))
 
+(custom-autoload 'scroll-bar-mode "scroll-bar" t)
 (defcustom scroll-bar-mode default-frame-scroll-bars
   "Specify whether to have vertical scroll bars, and on which side.
 Possible values are nil (no scroll bars), `left' (scroll bars on left)
