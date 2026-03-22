@@ -1226,7 +1226,13 @@ with
     (member-if (lambda (x) (foo (bar x))) items)"
   (declare (compiler-macro
             (lambda (_)
-              `(drop-while (lambda (x) (not (funcall ,pred x))) ,list))))
+              (let* ((x (make-symbol "x"))
+                     (f (and (not (internal--effect-free-fun-arg-p pred))
+                             (make-symbol "f")))
+                     (form `(drop-while (lambda (,x)
+                                          (not (funcall ,(or f pred) ,x)))
+                                        ,list)))
+                (if f `(let ((,f ,pred)) ,form) form)))))
   (drop-while (lambda (x) (not (funcall pred x))) list))
 
 ;; This is good to have for improved readability in certain uses, but
