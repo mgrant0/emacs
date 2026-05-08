@@ -1955,6 +1955,11 @@ fake_current_matrices (Lisp_Object window)
 		{
 		  r->used[LEFT_MARGIN_AREA] = m->left_margin_glyphs;
 		  r->used[RIGHT_MARGIN_AREA] = m->right_margin_glyphs;
+		  /* Non-rightmost windows have the border glyph at the
+		     end of the right margin, if any, in addition to the
+		     glyphs reserved for the margin itself.  */
+		  if (m->right_margin_glyphs > 0 && !WINDOW_RIGHTMOST_P (w))
+		    r->used[RIGHT_MARGIN_AREA]++;
 		  r->used[TEXT_AREA] = (m->matrix_w
 					- r->used[LEFT_MARGIN_AREA]
 					- r->used[RIGHT_MARGIN_AREA]);
@@ -7006,8 +7011,7 @@ FILE = nil means just close any termscript file currently open.  */)
 {
   struct tty_display_info *tty;
 
-  if (! FRAME_TERMCAP_P (SELECTED_FRAME ())
-      && ! FRAME_MSDOS_P (SELECTED_FRAME ()))
+  if (!is_tty_frame (SELECTED_FRAME ()))
     error ("Current frame is not on a tty device");
 
   tty = CURTTY ();
@@ -7574,7 +7578,7 @@ init_display_interactive (void)
     t = init_tty (0, terminal_type, 1); /* Errors are fatal. */
 
     /* Convert the initial frame to use the new display. */
-    if (f->output_method != output_initial)
+    if (!FRAME_INITIAL_P (f))
       emacs_abort ();
     f->output_method = t->type;
     f->terminal = t;
@@ -7584,7 +7588,7 @@ init_display_interactive (void)
     f->output_data.tty = &the_only_tty_output;
     f->output_data.tty->display_info = &the_only_display_info;
 #else
-    if (f->output_method == output_termcap)
+    if (FRAME_TERMCAP_P (f))
       create_tty_output (f);
 #endif
     t->display_info.tty->top_frame = selected_frame;

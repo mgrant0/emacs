@@ -5195,7 +5195,8 @@ lookup_basic_face (struct window *w, struct frame *f, int face_id)
     case MODE_LINE_INACTIVE_FACE_ID:	name = Qmode_line_inactive;	break;
     case HEADER_LINE_ACTIVE_FACE_ID:	name = Qheader_line_active;	break;
     case HEADER_LINE_INACTIVE_FACE_ID:	name = Qheader_line_inactive;	break;
-    case TAB_LINE_FACE_ID:		name = Qtab_line;		break;
+    case TAB_LINE_ACTIVE_FACE_ID:	name = Qtab_line_active;	break;
+    case TAB_LINE_INACTIVE_FACE_ID:	name = Qtab_line_inactive;	break;
     case TAB_BAR_FACE_ID:		name = Qtab_bar;		break;
     case TOOL_BAR_FACE_ID:		name = Qtool_bar;		break;
     case FRINGE_FACE_ID:		name = Qfringe;			break;
@@ -5210,6 +5211,7 @@ lookup_basic_face (struct window *w, struct frame *f, int face_id)
     case WINDOW_DIVIDER_LAST_PIXEL_FACE_ID:	name = Qwindow_divider_last_pixel;	break;
     case INTERNAL_BORDER_FACE_ID:	name = Qinternal_border; 	break;
     case CHILD_FRAME_BORDER_FACE_ID:	name = Qchild_frame_border; 	break;
+    case MARGIN_FACE_ID:		name = Qmargin;			break;
     case SCROLL_BAR_THUMB_FACE_ID:	name = Qscroll_bar_thumb;	break;
 
     default:
@@ -5777,7 +5779,7 @@ face for italic.  */)
     }
 
   /* Dispatch to the appropriate handler.  */
-  if (FRAME_TERMCAP_P (f) || FRAME_MSDOS_P (f))
+  if (is_tty_frame (f))
     supports = tty_supports_face_attributes_p (f, attrs, def_face);
 #ifdef HAVE_WINDOW_SYSTEM
   else
@@ -5976,7 +5978,9 @@ realize_basic_faces (struct frame *f)
       realize_named_face (f, Qinternal_border, INTERNAL_BORDER_FACE_ID);
       realize_named_face (f, Qchild_frame_border, CHILD_FRAME_BORDER_FACE_ID);
       realize_named_face (f, Qtab_bar, TAB_BAR_FACE_ID);
-      realize_named_face (f, Qtab_line, TAB_LINE_FACE_ID);
+      realize_named_face (f, Qtab_line_active, TAB_LINE_ACTIVE_FACE_ID);
+      realize_named_face (f, Qtab_line_inactive, TAB_LINE_INACTIVE_FACE_ID);
+      realize_named_face (f, Qmargin, MARGIN_FACE_ID);
       realize_named_face (f, Qscroll_bar_thumb, SCROLL_BAR_THUMB_FACE_ID);
       unbind_to (count, Qnil);
 
@@ -6072,7 +6076,7 @@ realize_default_face (struct frame *f)
 	ASET (lface, LFACE_FOREGROUND_INDEX, XCDR (color));
       else if (FRAME_WINDOW_P (f))
 	return false;
-      else if (FRAME_INITIAL_P (f) || FRAME_TERMCAP_P (f) || FRAME_MSDOS_P (f))
+      else if (FRAME_INITIAL_P (f) || is_tty_frame (f))
 	ASET (lface, LFACE_FOREGROUND_INDEX, build_string (unspecified_fg));
       else
 	emacs_abort ();
@@ -6087,7 +6091,7 @@ realize_default_face (struct frame *f)
 	ASET (lface, LFACE_BACKGROUND_INDEX, XCDR (color));
       else if (FRAME_WINDOW_P (f))
 	return false;
-      else if (FRAME_INITIAL_P (f) || FRAME_TERMCAP_P (f) || FRAME_MSDOS_P (f))
+      else if (FRAME_INITIAL_P (f) || is_tty_frame (f))
 	ASET (lface, LFACE_BACKGROUND_INDEX, build_string (unspecified_bg));
       else
 	emacs_abort ();
@@ -6198,7 +6202,7 @@ realize_face (struct face_cache *cache, Lisp_Object attrs[LFACE_VECTOR_SIZE],
 
   if (FRAME_WINDOW_P (cache->f))
     face = realize_gui_face (cache, attrs);
-  else if (FRAME_TERMCAP_P (cache->f) || FRAME_MSDOS_P (cache->f))
+  else if (is_tty_frame (cache->f))
     face = realize_tty_face (cache, attrs);
   else if (FRAME_INITIAL_P (cache->f))
     {
@@ -6707,7 +6711,7 @@ realize_tty_face (struct face_cache *cache,
   struct frame *f = cache->f;
 
   /* Frame must be a termcap frame.  */
-  eassert (FRAME_TERMCAP_P (cache->f) || FRAME_MSDOS_P (cache->f));
+  eassert (is_tty_frame (cache->f));
 
   /* Allocate a new realized face.  */
   face = make_realized_face (attrs);
@@ -7536,6 +7540,8 @@ syms_of_xfaces (void)
   DEFSYM (Qtab_bar, "tab-bar");
   DEFSYM (Qfringe, "fringe");
   DEFSYM (Qtab_line, "tab-line");
+  DEFSYM (Qtab_line_inactive, "tab-line-inactive");
+  DEFSYM (Qtab_line_active, "tab-line-active");
   DEFSYM (Qheader_line, "header-line");
   DEFSYM (Qheader_line_inactive, "header-line-inactive");
   DEFSYM (Qheader_line_active, "header-line-active");

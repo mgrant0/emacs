@@ -3810,6 +3810,8 @@ enum handlertype {
   CATCHER_ALL,                  /* Wildcard that catches all throws and signals.
                                    'tag_or_ch' is unused.
                                    'val' holds the retval during longjmp.  */
+  CATCHER_ALL_DEBUGGABLE,       /* Like CATCHER_ALL, but does not suppress the
+                                   debugger. */
   HANDLER_BIND,                 /* Entry for 'handler-bind'.
                                    'tag_or_ch' holds the list of conditions.
                                    'val' holds the handler function.
@@ -5166,7 +5168,7 @@ extern void *w32_daemon_event;
 /* True if handling a fatal error already.  */
 extern bool fatal_error_in_progress;
 
-/* True means don't do use window-system-specific display code.  */
+/* True means don't use window-system-specific display code.  */
 extern bool inhibit_window_system;
 /* True means that a filter or a sentinel is running.  */
 extern bool running_asynch_code;

@@ -1993,48 +1993,39 @@ ID-FORMAT valid values are `string' and `integer'."
   "Like `file-name-all-completions' for Tramp files."
   (tramp-skeleton-file-name-all-completions filename directory
     (with-parsed-tramp-file-name (expand-file-name directory) nil
-      (when (and (not (string-search "/" filename))
-		 (tramp-connectable-p v))
-	(unless (string-search "/" filename)
-	  (all-completions
-	   filename
-	   (with-tramp-file-property v localname "file-name-all-completions"
-	     (let (result)
-	       ;; Get a list of directories and files, including
-	       ;; reliably tagging the directories with a trailing "/".
-	       ;; Because I rock.  --daniel@danann.net
-	       (if (tramp-get-remote-perl v)
-		   (tramp-maybe-send-script
-		    v tramp-perl-file-name-all-completions
-		    "tramp_perl_file_name_all_completions")
-		 (tramp-maybe-send-script
-		  v tramp-shell-file-name-all-completions
-		  "tramp_shell_file_name_all_completions"))
+      (let (result)
+	;; Get a list of directories and files, including reliably
+	;; tagging the directories with a trailing "/".
+	;; Because I rock.  --daniel@danann.net
+	(if (tramp-get-remote-perl v)
+	    (tramp-maybe-send-script
+	     v tramp-perl-file-name-all-completions
+	     "tramp_perl_file_name_all_completions")
+	  (tramp-maybe-send-script
+	   v tramp-shell-file-name-all-completions
+	   "tramp_shell_file_name_all_completions"))
 
-	       (dolist
-		   (elt
-		    (tramp-send-command-and-read
-		     v (format
-			"%s %s"
-			(if (tramp-get-remote-perl v)
-			    "tramp_perl_file_name_all_completions"
-			  "tramp_shell_file_name_all_completions")
-			(tramp-shell-quote-argument localname))
-		     'noerror)
-		    result)
-		 ;; Don't cache "." and "..".
-		 (when (string-match-p
-			directory-files-no-dot-files-regexp
-			(file-name-nondirectory (car elt)))
-		   (tramp-set-file-property v (car elt) "file-exists-p" (nth 1 elt))
-		   (tramp-set-file-property v (car elt) "file-readable-p" (nth 2 elt))
-		   (tramp-set-file-property v (car elt) "file-directory-p" (nth 3 elt))
-		   (tramp-set-file-property v (car elt) "file-executable-p" (nth 4 elt)))
+	(dolist
+	    (elt
+	     (tramp-send-command-and-read
+	      v (format
+		 "%s %s"
+		 (if (tramp-get-remote-perl v)
+		     "tramp_perl_file_name_all_completions"
+		   "tramp_shell_file_name_all_completions")
+		 (tramp-shell-quote-argument localname))
+	      'noerror)
+	     result)
+	  ;; Don't cache "." and "..".
+	  (when (string-match-p
+		 directory-files-no-dot-files-regexp
+		 (file-name-nondirectory (car elt)))
+	    (tramp-set-file-property v (car elt) "file-exists-p" (nth 1 elt))
+	    (tramp-set-file-property v (car elt) "file-readable-p" (nth 2 elt))
+	    (tramp-set-file-property v (car elt) "file-directory-p" (nth 3 elt))
+	    (tramp-set-file-property v (car elt) "file-executable-p" (nth 4 elt)))
 
-		 (push
-		  (concat
-		   (file-name-nondirectory (car elt)) (and (nth 3 elt) "/"))
-		  result))))))))))
+	  (push (file-name-nondirectory (car elt)) result))))))
 
 ;; cp, mv and ln
 
@@ -2803,7 +2794,7 @@ The method used must be an out-of-band method."
 	      (append switches (split-string (tramp-sh--quoting-style-options v))
 		      (when dired `(,dired))))
 	(unless dired
-	  (setq switches (delete "-N" (delete "--dired" switches)))))
+	  (setq switches (seq-difference switches '("-N" "--dired")))))
       (when wildcard
         (setq wildcard (tramp-run-real-handler
 			#'file-name-nondirectory (list localname)))
@@ -3102,6 +3093,15 @@ will be used."
 			  (setq uenv (cons elt uenv))))))
 	     (env (setenv-internal
 		   env "INSIDE_EMACS" (tramp-inside-emacs) 'keep))
+	     ;; Environment is too large.  Keep it here.
+	     (eenv (and (> (apply #'+ (length env) (seq-map #'length env)) 2000)
+			env))
+	     (env (if (not eenv) env
+		    `(,(concat
+			"INSIDE_EMACS=" (getenv-internal "INSIDE_EMACS" env))
+		      ,(concat "PS1=" (getenv-internal "PS1" env)))))
+	     (eenv (setenv-internal eenv "INSIDE_EMACS" nil nil))
+	     (eenv (setenv-internal eenv "PS1" nil nil))
 	     (command
 	      (when (stringp program)
 		(format "cd %s && %s exec %s %s env %s %s"
@@ -3216,6 +3216,11 @@ will be used."
 			(widen)
 			(delete-region mark (point-max))
 			(narrow-to-region (point-max) (point-max))
+			;; Send delayed environment.
+			(dolist (entry eenv)
+			  (tramp-send-command
+			   v (format
+			      "export %s" (tramp-shell-quote-argument entry))))
 			;; Now do it.
 			(if command
 			    ;; Send the command.
@@ -3917,11 +3922,13 @@ Fall back to normal file name handler if no Tramp handler exists."
     (when rest-string
       (tramp-message proc 10 "Previous string:\n%s" rest-string))
     (tramp-message proc 6 "%S\n%s" proc string)
-    (setq string (concat rest-string string)
-          ;; Fix action names.
-          string (string-replace "attributes changed" "attribute-changed" string)
-          string (string-replace "changes done" "changes-done-hint" string)
-          string (string-replace "renamed to" "moved" string))
+    (setq string
+	  (thread-last
+	    (concat rest-string string)
+	    ;; Fix action names.
+	    (string-replace "attributes changed" "attribute-changed")
+	    (string-replace "changes done" "changes-done-hint")
+	    (string-replace "renamed to" "moved")))
 
     (catch 'doesnt-work
       ;; https://bugs.launchpad.net/bugs/1742946
@@ -4695,19 +4702,22 @@ process to set up.  VEC specifies the connection."
 	(tramp-send-command
 	 vec (format "unset %s" (string-join unset " ")) t)))
 
+    ;; FIXME: This doesn't work with `tramp-test42-utf8' and "/ssh::tmp".
     ;; Set connection-local variable `command-line-max-length'.
     ;; `command-line-max-length' exists since Emacs 31.
     ;; `connection-local-profile-name-for-criteria' exists since Emacs 29.1.
     ;; We simulate it with `make-symbol'.
-    (when (boundp 'command-line-max-length)
-      (let* ((criteria (tramp-get-connection-local-criteria vec))
-	     (profile (if (fboundp 'connection-local-profile-name-for-criteria)
-			  (connection-local-profile-name-for-criteria criteria)
-			(make-symbol "generated-profile-name"))))
-	(connection-local-set-profile-variables
-	 profile
-	 `((command-line-max-length . ,(tramp-get-remote-pipe-buf vec))))
-	(connection-local-set-profiles criteria profile)))))
+    ;; (when (boundp 'command-line-max-length)
+    ;;   (let* ((arg-max (tramp-get-remote-arg-max vec))
+    ;; 	     (criteria (tramp-get-connection-local-criteria vec))
+    ;; 	     (profile (if (fboundp 'connection-local-profile-name-for-criteria)
+    ;; 			  (connection-local-profile-name-for-criteria criteria)
+    ;; 			(make-symbol "generated-profile-name"))))
+    ;; 	(connection-local-set-profile-variables
+    ;; 	 profile
+    ;; 	 `((command-line-max-length . ,(if arg-max (floor arg-max 4) 4094))))
+    ;; 	(connection-local-set-profiles criteria profile)))))
+    ))
 
 ;; Old text from documentation of tramp-methods:
 ;; Using a uuencode/uudecode inline method is discouraged, please use one
@@ -5043,8 +5053,7 @@ Goes through the list `tramp-inline-compress-commands'."
 
    ;; Use plink options.
    ((string-match-p
-     (rx "plink" (? ".exe") eol)
-     (tramp-get-method-parameter vec 'tramp-login-program))
+     (rx "plink" (? ".exe") eol) (tramp-expand-args vec 'tramp-login-program))
     (concat
      (if (eq tramp-use-connection-share 'suppress)
 	 "-noshare" "-share")
@@ -5404,9 +5413,7 @@ connection if a previous connection has died for some reason."
 			  (tramp-get-method-parameter
 			   hop 'tramp-connection-timeout
 			   tramp-connection-timeout))
-			 (command
-			  (tramp-get-method-parameter
-			   hop 'tramp-login-program))
+			 (command (tramp-expand-args hop 'tramp-login-program))
 			 ;; We don't create the temporary file.  In
 			 ;; fact, it is just a prefix for the
 			 ;; ControlPath option of ssh; the real
@@ -5812,11 +5819,23 @@ Nonexistent directories are removed from spec."
 	       remote-path :test #'string-equal :from-end t))
 
 	;; Remove non-existing directories.
-	(let (remote-file-name-inhibit-cache)
+	(let ((remote-file-name-inhibit-cache
+	       (tramp-suppress-remote-file-name-inhibit-cache)))
 	  (tramp-bundle-read-file-names vec remote-path)
 	  (cl-remove-if
 	   (lambda (x) (not (tramp-get-file-property vec x "file-directory-p")))
 	   remote-path))))))
+
+(defun tramp-get-remote-arg-max (vec)
+  "Return ARG_MAX config from the remote side."
+  (with-tramp-connection-property vec "arg-max"
+    (when-let* ((result
+		 (tramp-send-command-and-read
+		  vec (format "getconf ARG_MAX 2>%s"
+			      (tramp-get-remote-null-device vec))
+		  'noerror))
+		((natnump result)))
+      result)))
 
 ;; The PIPE_BUF in POSIX [1] can be as low as 512 [2].  Here are the values
 ;; on various platforms:

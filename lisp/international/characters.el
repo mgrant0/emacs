@@ -1711,11 +1711,18 @@ the value of the variable with `setq'."
 				 (car code-range) (cdr code-range)))))
 	(optimize-char-table table)
 	(set-char-table-parent table char-width-table)
-        (let ((tbl (make-char-table nil)))
+        (let ((tbl (make-char-table nil))
+              (ambiguous-is-wide
+               (and cjk-ambiguous-chars-are-wide
+                    ;; MS-Windows Terminal forces all ambiguous
+                    ;; characters to be narrow, even in CJK locales.
+                    (not (and (boundp 'w32--terminal-is-conhost)
+                              (null w32--terminal-is-conhost))))))
           (map-char-table
            (lambda (range _val)
-             (set-char-table-range tbl range
-                                   (if cjk-ambiguous-chars-are-wide 2 1)))
+             (set-char-table-range
+              tbl range
+              (if ambiguous-is-wide 2 1)))
            ambiguous-width-chars)
           (optimize-char-table tbl)
           (set-char-table-parent tbl table)
@@ -1782,15 +1789,15 @@ Setup `char-width-table' appropriate for non-CJK language environment."
 (let ((c0-acronyms '("NUL" "SOH" "STX" "ETX" "EOT" "ENQ" "ACK" "BEL"
 		     "BS"   nil   nil  "VT"  "FF"  "CR"  "SO"  "SI"
 		     "DLE" "DC1" "DC2" "DC3" "DC4" "NAK" "SYN" "ETB"
-		     "CAN" "EM"  "SUB" "ESC" "FC"  "GS"  "RS"  "US")))
+		     "CAN" "EM"  "SUB" "ESC" "FS"  "GS"  "RS"  "US")))
   (dotimes (i 32)
     (aset char-acronym-table i (car c0-acronyms))
     (setq c0-acronyms (cdr c0-acronyms))))
 
 (let ((c1-acronyms '("PAD" "HOP" "BPH" "NBH" "IND" "NEL" "SSA" "ESA"
-		     "HTS" "HTJ" "VTS" "PLD" "PLU" "R1"  "SS2" "SS1"
+		     "HTS" "HTJ" "VTS" "PLD" "PLU" "RI"  "SS2" "SS3"
 		     "DCS" "PU1" "PU2" "STS" "CCH" "MW"  "SPA" "EPA"
-		     "SOS" "SGCI" "SC1" "CSI" "ST"  "OSC" "PM"  "APC")))
+		     "SOS" "SGCI" "SCI" "CSI" "ST"  "OSC" "PM"  "APC")))
   (dotimes (i 32)
     (aset char-acronym-table (+ #x0080 i) (car c1-acronyms))
     (setq c1-acronyms (cdr c1-acronyms))))

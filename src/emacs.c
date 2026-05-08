@@ -2050,10 +2050,6 @@ Using an Emacs configured with --with-x-toolkit=lucid does not have this problem
 #endif
 
 #ifdef HAVE_NS
-  /* For early calls to ns_lisp_to_color or Fns_list_colors.  */
-  if (!dump_mode)
-    ns_init_colors ();
-
   if (!noninteractive)
     {
 #ifdef NS_IMPL_COCOA
@@ -2293,6 +2289,13 @@ Using an Emacs configured with --with-x-toolkit=lucid does not have this problem
   check_windows_init_file ();
 #endif
 
+#ifdef HAVE_NS
+  /* For early calls to ns_lisp_to_color or Fns_list_colors.
+     Must follow init_callproc which sets data-directory.  */
+  if (!dump_mode)
+    ns_init_colors ();
+#endif
+
   /* Intern the names of all standard functions and variables;
      define standard keys.  */
 
@@ -2362,7 +2365,7 @@ Using an Emacs configured with --with-x-toolkit=lucid does not have this problem
       syms_of_fringe ();
       syms_of_image ();
 #ifdef HAVE_NTGUI
-# if HAVE_NATIVE_IMAGE_API
+# if WINDOWSNT
       syms_of_w32image ();
 # endif
 #endif	/* HAVE_NTGUI */
@@ -2504,7 +2507,7 @@ Using an Emacs configured with --with-x-toolkit=lucid does not have this problem
       globals_of_w32font ();
       globals_of_w32fns ();
       globals_of_w32menu ();
-# if HAVE_NATIVE_IMAGE_API
+# if WINDOWSNT
       globals_of_w32image ();
 # endif
 #endif  /* HAVE_NTGUI */

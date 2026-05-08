@@ -2110,7 +2110,7 @@ Also see `help-window-select'."
   'help-enable-autoload "27.1")
 
 (defcustom help-enable-autoload t
-  "Whether Help commands can perform autoloading.
+  "Whether Help commands can perform autoloading in order to show key bindings.
 If non-nil, whenever \\[describe-function] is called for an
 autoloaded function whose docstring contains any key substitution
 construct (see `substitute-command-keys'), the library is loaded,
@@ -2356,11 +2356,13 @@ ARGLIST can also be t or a string of the form \"(FUN ARG1 ARG2 ...)\"."
   "Return a formal argument list for the function DEF.
 If PRESERVE-NAMES is non-nil, return a formal arglist that uses
 the same names as used in the original source code, when possible."
-  (let ((orig-def def)
-        ;; Advice wrappers have "catch all" args, so fetch the actual underlying
-        ;; function to find the real arguments.
-        (def (advice--cd*r
-              (indirect-function def)))) ;; Follow aliases to other symbols.
+  (let ((orig-def def))
+    (let ((seen nil))
+      ;; Advice wrappers have "catch all" args, so fetch the actual underlying
+      ;; function to find the real arguments.  Also follow aliases.
+      (while (not (memq def seen))
+        (push def seen)
+        (setq def (advice--cd*r (indirect-function def)))))
     ;; If definition is a macro, find the function inside it.
     (if (eq (car-safe def) 'macro) (setq def (cdr def)))
     (cond

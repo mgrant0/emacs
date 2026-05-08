@@ -2436,7 +2436,7 @@ read_decoded_event_from_main_queue (struct timespec *end_time,
 #else
       struct frame *frame = XFRAME (selected_frame);
       struct terminal *terminal = frame->terminal;
-      if (!((FRAME_TERMCAP_P (frame) || FRAME_MSDOS_P (frame))
+      if (!(is_tty_frame (frame)
             /* Don't apply decoding if we're just reading a raw event
                (e.g. reading bytes sent by the xterm to specify the position
                of a mouse click).  */
@@ -12543,11 +12543,17 @@ handle_interrupt_signal (int sig)
   struct terminal *terminal = get_named_terminal (dev_tty);
   if (!terminal)
     {
-      /* If there are no frames there, let's pretend that we are a
-         well-behaving UN*X program and quit.  We must not call Lisp
+      /* There are no frames, so either 'quit' or exit.
+         If 'kill-emacs-on-sigint', pretend that we are a
+         well-behaving UN*X program and exit.  We must not call Lisp
          in a signal handler, so tell maybe_quit to exit when it is
          safe.  */
-      Vquit_flag = Qkill_emacs;
+      Vquit_flag = (kill_emacs_on_sigint
+		    /* Don't risk running ELisp code while shutting down
+		       and limit the effect of 'kill_emacs_on_sigint'
+		       to batch sessions.  */
+		    || NILP (Vrun_hooks) || !noninteractive
+		    ? Qkill_emacs : Qt);
     }
   else
     {
@@ -12982,7 +12988,7 @@ The elements of this list correspond to the arguments of
 
   Lisp_Object interrupt = interrupt_input ? Qt : Qnil;
   Lisp_Object flow, meta;
-  if (FRAME_TERMCAP_P (sf) || FRAME_MSDOS_P (sf))
+  if (is_tty_frame (sf))
     {
       flow = FRAME_TTY (sf)->flow_control ? Qt : Qnil;
       meta = (FRAME_TTY (sf)->meta_key == 2
@@ -13224,17 +13230,18 @@ init_keyboard (void)
      it for the initial terminal since there is no window system there.  */
   init_kboard (current_kboard, Qnil);
 
+  /* Before multi-tty support, these handlers used to be installed
+     only if the current session was a tty session.  Now an Emacs
+     session may have multiple display types, so we always handle
+     SIGINT.  There is special code in handle_interrupt_signal to exit
+     Emacs on SIGINT when there are no termcap frames on the
+     controlling terminal.  */
+  struct sigaction action;
+  emacs_sigaction_init (&action, deliver_interrupt_signal);
+  sigaction (SIGINT, &action, 0);
+
   if (!noninteractive)
     {
-      /* Before multi-tty support, these handlers used to be installed
-         only if the current session was a tty session.  Now an Emacs
-         session may have multiple display types, so we always handle
-         SIGINT.  There is special code in handle_interrupt_signal to exit
-         Emacs on SIGINT when there are no termcap frames on the
-         controlling terminal.  */
-      struct sigaction action;
-      emacs_sigaction_init (&action, deliver_interrupt_signal);
-      sigaction (SIGINT, &action, 0);
 #ifndef DOS_NT
       /* For systems with SysV TERMIO, C-g is set up for both SIGINT and
 	 SIGQUIT and we can't tell which one it will give us.  */
@@ -13400,6 +13407,12 @@ syms_of_keyboard (void)
   DEFVAR_LISP ("internal--top-level-message", Vinternal__top_level_message,
 	       doc: /* Message displayed by `normal-top-level'.  */);
   Vinternal__top_level_message = regular_top_level_message;
+
+  DEFVAR_BOOL ("kill-emacs-on-sigint", kill_emacs_on_sigint,
+	       doc: /* If non-nil, a SIGINT event causes Emacs to exit.
+If nil, a SIGINT event causes a `quit` signal instead.
+This is effective only in `noninteractive' sessions.  */);
+  kill_emacs_on_sigint = true;
 
   /* Tool-bars.  */
   DEFSYM (QCimage, ":image");

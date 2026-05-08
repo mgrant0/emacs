@@ -553,7 +553,8 @@ displayed instead."
 (defcustom dired-auto-toggle-b-switch nil
   "Whether to automatically add or remove the `b' switch.
 If non-nil, the function `dired--toggle-b-switch' (which see) is added
-to `post-command-hook' in Dired mode."
+to `post-command-hook' in Dired mode, unless the `ls' used by Dired does
+not accept the `b' switch."
   :type 'boolean
   :group 'dired
   :initialize #'custom-initialize-default
@@ -648,6 +649,13 @@ Subexpression 1 is the subdirectory proper, no trailing colon.
 The match starts at the beginning of the line and ends after the end
 of the line.
 Subexpression 2 must end right before the \\n.")
+
+(defvar dired--ls-error-file nil
+  "When non-nil, name of temporary file an `ls' error is written to.")
+
+(defvar dired--ls-error-buffer nil
+  "Non-nil if the current dired invocation yields an `ls' error.
+The non-nil value is the buffer containing the error message.")
 
 
 ;;; Faces
@@ -1230,7 +1238,17 @@ Type \\[describe-mode] after entering Dired for more info.
 If DIRNAME is already in a Dired buffer, that buffer is used without refresh."
   ;; Cannot use (interactive "D") because of wildcards.
   (interactive (dired-read-dir-and-switches ""))
-  (pop-to-buffer-same-window (dired-noselect dirname switches)))
+  (prog1 (pop-to-buffer-same-window (dired-noselect dirname switches))
+    (dired--display-ls-error)))
+
+;; This lets clicks on the menu bar invoke Dired even if some feature
+;; remaps the Dired command to another command that does not handle this
+;; situation correctly (e.g. earlier versions of `dired-at-point-prompter').
+;;;###autoload
+(defun dired-from-menubar (dirname &optional switches)
+  "Edit an existing directory."
+  (interactive (dired-read-dir-and-switches ""))
+  (dired dirname switches))
 
 ;;;###autoload (keymap-set ctl-x-4-map "d" #'dired-other-window)
 ;;;###autoload
@@ -1240,21 +1258,24 @@ If this command needs to split the current window, it by default obeys
 the user options `split-height-threshold' and `split-width-threshold',
 when it decides whether to split the window horizontally or vertically."
   (interactive (dired-read-dir-and-switches "in other window "))
-  (switch-to-buffer-other-window (dired-noselect dirname switches)))
+  (prog1 (switch-to-buffer-other-window (dired-noselect dirname switches))
+    (dired--display-ls-error)))
 
 ;;;###autoload (keymap-set ctl-x-5-map "d" #'dired-other-frame)
 ;;;###autoload
 (defun dired-other-frame (dirname &optional switches)
   "\"Edit\" directory DIRNAME.  Like `dired' but make a new frame."
   (interactive (dired-read-dir-and-switches "in other frame "))
-  (switch-to-buffer-other-frame (dired-noselect dirname switches)))
+  (prog1 (switch-to-buffer-other-frame (dired-noselect dirname switches))
+    (dired--display-ls-error)))
 
 ;;;###autoload (keymap-set tab-prefix-map "d" #'dired-other-tab)
 ;;;###autoload
 (defun dired-other-tab (dirname &optional switches)
   "\"Edit\" directory DIRNAME.  Like `dired' but make a new tab."
   (interactive (dired-read-dir-and-switches "in other tab "))
-  (switch-to-buffer-other-tab (dired-noselect dirname switches)))
+  (prog1 (switch-to-buffer-other-tab (dired-noselect dirname switches))
+    (dired--display-ls-error)))
 
 ;;;###autoload
 (defun dired-noselect (dir-or-list &optional switches)
@@ -1439,23 +1460,29 @@ The return value is the target column for the file names."
       (let ((failed t))
 	(unwind-protect
 	    (progn (dired-readin)
-		   (setq failed nil))
-	  ;; dired-readin can fail if parent directories are inaccessible.
-	  ;; Don't leave an empty buffer around in that case.
-	  (if failed (kill-buffer buffer))))
+                   (unless (and dired--ls-error-buffer
+                                (get-buffer "*ls error*"))
+		     (setq failed nil)))
+	  ;; If either `dired-readin' failed (e.g. if parent directories
+	  ;; are inaccessible) or `ls' errored, don't leave the Dired
+	  ;; buffer around.
+	  (when failed
+            (kill-buffer buffer)
+            (setq buffer nil))))
       (goto-char (point-min))
       (dired-initial-position dirname))
     (when (consp dired-directory)
       (dired--align-all-files))
-    ;; Pop up a warning if the Dired listing displays a literal newline.
-    ;; We do this here in order to get the warning not only when
-    ;; interactively invoking `dired' on a directory, but also e.g. when
-    ;; passing the directory name as a command line argument when
-    ;; starting Emacs from the shell.
+    ;; Pop up a warning if the Dired listing displays a literal newline
+    ;; and `ls' can take the `b' switch.  We do this here in order to
+    ;; get the warning not only when interactively invoking `dired' on a
+    ;; directory, but also e.g. when passing the directory name as a
+    ;; command line argument when starting Emacs from the shell.
     (unless (or dired-auto-toggle-b-switch
                 (dired-switches-escape-p dired-listing-switches)
                 (dired-switches-escape-p dired-actual-switches))
-      (when (dired--filename-with-newline-p)
+      (when (and (dired--filename-with-newline-p)
+                 (dired--ls-accept-b-switch-p))
         (dired--display-filename-with-newline-warning buffer)))
     (set-buffer old-buf)
     buffer))
@@ -1593,7 +1620,27 @@ wildcards, erases the buffer, and builds the subdir-alist anew
       ;; Else treat it as a wildcard spec
       ;; unless we have an explicit list of files.
       (dired-insert-directory dir dired-actual-switches
-       file-list (not file-list) t)))))
+                              file-list (not file-list) t)))
+    ;; Every time `temporary-file-directory' is (re)displayed in Dired a
+    ;; new `ls' error file is created and the Dired buffer has an entry
+    ;; for it.  The file itself is deleted in `insert-directory' but its
+    ;; Dired entry remains, so we remove it here.  This is not relevant
+    ;; if ls-lisp emulation is used.
+    (when (files--use-insert-directory-program-p)
+      (let ((tmpbuf (dired-find-buffer-nocreate temporary-file-directory)))
+        (when tmpbuf
+          (with-current-buffer tmpbuf
+            (save-excursion
+              (without-restriction
+                (goto-char (point-min))
+                (when (search-forward
+                       (file-name-base dired--ls-error-file) nil t)
+                  ;; The call chain of `dired-remove-entry' requires
+                  ;; non-nil `dired-subdir-alist', but here it is nil,
+                  ;; so we set it.
+                  (let ((dired-subdir-alist `((,temporary-file-directory
+                                               . ,(point-min-marker)))))
+                    (dired-remove-entry dired--ls-error-file)))))))))))
 
 (defun dired-align-file (beg end)
   "Align the fields of a file to the ones of surrounding lines.
@@ -4003,20 +4050,15 @@ Considers buffers closer to the car of `buffer-list' to be more recent."
        (not (memq buffer1 (memq buffer2 (buffer-list))))))
 
 (defun dired--filename-with-newline-p ()
-  "Check if a file name in this directory has a newline.
-Return non-nil if at least one file name in this directory contains
-either a literal newline or the string \"\\n\")."
-  (save-excursion
-    (goto-char (point-min))
-    (catch 'found
-      (while (not (eobp))
-        (when (dired-move-to-filename)
-          (let ((fn (buffer-substring-no-properties
-                     (point) (dired-move-to-end-of-filename))))
-            (when (or (memq 10 (seq-into fn 'list))
-                      (string-search "\\n" fn))
-              (throw 'found t))))
-        (forward-line)))))
+  "Check whether a file name in this directory has a newline.
+Return non-nil if at least one file name in this directory contains a
+newline character (regardless of whether Dired displays the character as
+a literal newline or as \"\\n\")."
+  (directory-files default-directory nil "\n"))
+
+(defun dired--ls-accept-b-switch-p ()
+  "Return non-nil if the `ls' used by Dired accepts the `b' switch."
+  (eq 0 (call-process insert-directory-program nil nil nil "-b")))
 
 (defun dired--remove-b-switch ()
   "Remove all variants of the `b' switch from `dired-actual-switches'.
@@ -4035,8 +4077,9 @@ the long forms `--escape' and `--quoting-style=escape'."
   "Add or remove `b' switch and redisplay Dired buffer.
 When the current Dired buffer has a file name containing a newline, add
 the `b' switch to the actual switches if it isn't already among them;
-otherwise remove the `b' switch unless it is in `dired-listing-switches'.
-Then redisplay the Dired buffer.  This function is called from
+otherwise remove the `b' switch unless it is in
+`dired-listing-switches'.  Then redisplay the Dired buffer.  When
+`dired-auto-toggle-b-switch' is non-nil, this function is called from
 `post-command-hook' in Dired mode buffers."
   (when (eq major-mode 'dired-mode)
     (if (and (dired--filename-with-newline-p) dired-auto-toggle-b-switch)
@@ -4051,12 +4094,13 @@ Then redisplay the Dired buffer.  This function is called from
 (defun dired--set-auto-toggle-b-switch (symbol value)
   "The :set function for user option `dired-auto-toggle-b-switch'."
   (custom-set-default symbol value)
-  (if value
-      (add-hook 'post-command-hook #'dired--toggle-b-switch nil t)
-    (remove-hook 'post-command-hook #'dired--toggle-b-switch t))
-  (dolist (b (buffer-list))
-    (with-current-buffer b
-      (dired--toggle-b-switch))))
+  (when (dired--ls-accept-b-switch-p)
+    (if value
+        (add-hook 'post-command-hook #'dired--toggle-b-switch nil t)
+      (remove-hook 'post-command-hook #'dired--toggle-b-switch t))
+    (dolist (b (buffer-list))
+      (with-current-buffer b
+        (dired--toggle-b-switch)))))
 
 (defun dired--display-filename-with-newline-warning (dir)
   "Display a warning if buffer DIR has a file name with a newline."
@@ -4093,6 +4137,13 @@ See `%s' for other alternatives and more information."))
     (with-current-buffer "*Warnings*"
       (set-window-point (get-buffer-window)
                         (search-backward "Warning (dired)")))))
+
+(defun dired--display-ls-error ()
+  "Pop up the buffer displaying the current `ls' error, if any."
+  (when (buffer-live-p dired--ls-error-buffer)
+    (let* ((errwin (display-buffer dired--ls-error-buffer)))
+      (fit-window-to-buffer errwin))
+    (setq dired--ls-error-buffer nil)))
 
 
 ;;; Deleting files

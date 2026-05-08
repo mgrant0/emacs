@@ -74,6 +74,14 @@ to the user."
 The Lisp code is executed when the node is selected.")
 (put 'Info-enable-active-nodes 'risky-local-variable t)
 
+(defvar-local Info-documentlanguage nil
+  "Document language as set by the Texinfo source.
+Currently, this is not used.")
+;; Autoload to avoid annoying prompts when visiting Info files as normal
+;; files.  Texinfo 7.3 puts this variable into Info files it produces.
+;;;###autoload
+(put 'Info-documentlanguage 'safe-local-variable #'symbolp)
+
 (defface info-node
   '((((class color) (background light)) :foreground "brown" :weight bold :slant italic)
     (((class color) (background dark)) :foreground "white" :weight bold :slant italic)
@@ -1897,8 +1905,10 @@ of NODENAME; if none is found it then tries a case-insensitive match
                     (if (equal nodename "") "Top" nodename) nil strict-case)))
 
 (defun Info-goto-node-web (node)
-  "Use `browse-url' to go to the gnu.org web server's version of NODE.
-By default, go to the current Info node."
+  "Use `browse-url' to go to the gnu.org Web server's version of NODE.
+By default, go to the URL corresponding to the current Info node.
+
+This uses `Info-url-for-node' to determine the URL that corresponds to NODE."
   (interactive (list (Info-read-node-name
                       "Go to node (default current page): " Info-current-node))
                Info-mode)
@@ -1924,7 +1934,10 @@ By default, go to the current Info node."
 (defun Info-url-for-node (node)
   "Return the URL corresponding to NODE.
 
-NODE should be a string of the form \"(manual)Node\"."
+NODE should be a string of the form \"(manual)Node\".
+
+The correspondence between Info manuals and their Web URLs is
+established by `Info-url-alist', which see."
   ;; GNU Texinfo skips whitespaces and newlines between the closing
   ;; parenthesis and the node-name, i.e. space, tab, line feed and
   ;; carriage return.

@@ -2807,7 +2807,7 @@ has been requested by the completion table."
   "Update displayed *Completions* buffer after change in buffer contents."
   (if (not (or (minibufferp nil t) completion-in-region-mode))
       (remove-hook 'after-change-functions #'completions--after-change t)
-    (when-let* ((window (get-buffer-window "*Completions*" 0)))
+    (when-let* ((window (get-buffer-window "*Completions*" 'visible)))
       (when completion-auto-deselect
         (with-selected-window window
           (completions--deselect))))
@@ -3480,7 +3480,7 @@ in the minibuffer window."
 
 (defun minibuffer--completions-visible ()
   "Return the window where the current *Completions* buffer is visible, if any."
-  (when-let* ((window (get-buffer-window "*Completions*" 0)))
+  (when-let* ((window (get-buffer-window "*Completions*" 'visible)))
     (let ((reference-buffer
            (buffer-local-value 'completion-reference-buffer
                                (window-buffer window))))
@@ -3679,6 +3679,27 @@ same as `substitute-in-file-name'."
               all))))))
     (file-error nil)))               ;PCM often calls with invalid directories.
 
+(defun completion--sifn-regardless-of-system-users (filename)
+  ;; `substitute-in-file-name' handles `~FOO' specially (by cutting
+  ;; any prefix to it that ends in `/', so `/foo/~bar/baz' turns into
+  ;; `~bar/baz') but only if `FOO' is the name of a user on the system.
+  ;; Completion of `~FOO' against the set of user names is handled
+  ;; already in `completion-file-name-table' when `~FOO' occurs at the
+  ;; beginning of the file name, but if we want to support such completions
+  ;; "in the middle", I see two ways to do it:
+  ;; - Do something similar to `completion--embedded-envvar-table'.
+  ;; - Extend `substitute-in-file-name's handling of `~FOO' so
+  ;;   `/foo/~bar/baz' turns into `~bar/baz' regardless if `bar'
+  ;;   is a valid user name (because we hope that it will be completed
+  ;;   to a user name).
+  ;; The second option is what we do here.  (bug#32215)
+  ;; FIXME: This breaks completion when you have a file or directory
+  ;; whose name starts with `~'.
+  ;; FIXME: This doesn't take file-name-handlers into account.
+  (while (string-match "/~[[:alnum:]_*-]" filename)
+    (setq filename (substring filename (1+ (match-beginning 0)))))
+  (substitute-in-file-name filename))
+
 (defun completion--sifn-requote (upos qstr)
   ;; We're looking for (the largest) `qpos' such that:
   ;; (equal (substring (substitute-in-file-name qstr) 0 upos)
@@ -3761,7 +3782,10 @@ except that it passes the file name through `substitute-in-file-name'."
   (let ((table #'completion-file-name-table))
     (if (eq (car-safe action) 'boundaries)
         (cons 'boundaries (completion--sifn-boundaries orig table pred (cdr action)))
-      (let* ((sifned (substitute-in-file-name orig))
+      (let* ((sifned
+              (if (eq action 'lambda)
+                  (substitute-in-file-name orig)
+                (completion--sifn-regardless-of-system-users orig)))
              (orig-start (car (completion--sifn-boundaries orig table pred "")))
              (sifned-start (car (completion-boundaries sifned table pred "")))
              (orig-in-bounds (substring orig orig-start))
