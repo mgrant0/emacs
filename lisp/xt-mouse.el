@@ -140,8 +140,10 @@ Returns nil if no TTY scroll bar occupies position (X, Y)."
       (walk-windows
        (lambda (w)
          (unless result
-           (let* ((right-edge (+ (window-left-column w)
-                                 (window-total-width w)))
+           (let* ((edges      (window-edges w))
+                  (win-top    (nth 1 edges))
+                  (right-edge (nth 2 edges))
+                  (win-bot    (nth 3 edges))
                   (sb-col
                    (cond
                     ((eq sb-side 'left) (window-left-column w))
@@ -159,9 +161,7 @@ Returns nil if no TTY scroll bar occupies position (X, Y)."
                               (/= right-edge
                                   (1+ (frame-width (window-frame w)))))
                          (- right-edge 2)
-                       (1- right-edge)))))
-                  (win-top (window-top-line w))
-                  (win-bot (+ win-top (window-total-height w))))
+                       (1- right-edge))))))
              (when (and sb-col
                         (= x sb-col)
                         (<= win-top y)
@@ -181,10 +181,10 @@ window with a right scroll bar.  In that layout, [content][SB][|], the
       (walk-windows
        (lambda (w)
          (unless result
-           (let* ((right-edge (+ (window-left-column w)
-                                 (window-total-width w)))
-                  (win-top (window-top-line w))
-                  (win-bot (+ win-top (window-total-height w))))
+           (let* ((edges      (window-edges w))
+                  (win-top    (nth 1 edges))
+                  (right-edge (nth 2 edges))
+                  (win-bot    (nth 3 edges)))
              (when (and (/= right-edge (1+ (frame-width (window-frame w))))
                         (= x (1- right-edge))
                         (<= win-top y)
