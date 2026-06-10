@@ -411,8 +411,8 @@ that the early init file is loaded much earlier during the startup
 process, so you can use it to customize some things that are
 initialized before loading the regular init file.  For example, you
 can customize the process of initializing the package system, by
-setting variables such as @var{package-load-list} or
-@var{package-enable-at-startup}.  @xref{Package Installation,,,
+setting variables such as @code{package-load-list} or
+@code{package-enable-at-startup}.  @xref{Package Installation,,,
 emacs,The GNU Emacs Manual}.
 
 @cindex default init file
@@ -2040,6 +2040,7 @@ system.
 @defun format-seconds format-string seconds
 This function converts its argument @var{seconds} into a string of
 years, days, hours, etc., according to @var{format-string}.  The
+argument @var{seconds} is a time value (@pxref{Time of Day}).  The
 argument @var{format-string} may contain @samp{%}-sequences which
 control the conversion.  Here is a table of what the
 @samp{%}-sequences mean:

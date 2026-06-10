@@ -117,9 +117,10 @@
        (t (add-to-list
            'tramp-methods
            `("mock"
-	     (tramp-login-program	,tramp-default-remote-shell)
+	     (tramp-login-program	,tramp-encoding-shell)
 	     (tramp-login-args		(("-i")))
              (tramp-direct-async	("-c"))
+             (tramp-tmpdir		,temporary-file-directory)
 	     (tramp-remote-shell	,tramp-default-remote-shell)
 	     (tramp-remote-shell-args	("-c"))
 	     (tramp-connection-timeout	10)))
@@ -225,7 +226,8 @@
       auto-revert-use-notify t
       ert-batch-backtrace-right-margin nil
       ert-remote-temporary-file-directory
-      (expand-file-name ert-remote-temporary-file-directory)
+      (let ((tramp-show-ad-hoc-proxies t) (non-essential t))
+	(expand-file-name ert-remote-temporary-file-directory))
       password-cache-expiry nil
       remote-file-name-inhibit-cache nil
       tramp-allow-unsafe-temporary-files t
@@ -2297,6 +2299,7 @@ being the result.")
 	(tramp-default-proxies-alist tramp-default-proxies-alist)
 	(tramp-show-ad-hoc-proxies t))
     (cl-letf* (((symbol-function #'read-string) #'ignore) ; Suppress password.
+	       ((symbol-function #'y-or-n-p) #'ignore) ; distrobox.
 	       ((tramp-file-name-host vec) "example.com.invalid"))
       (should-error
        (file-exists-p (tramp-make-tramp-file-name vec))
@@ -6524,8 +6527,7 @@ INPUT, if non-nil, is a string sent to the process."
   "Check that remote processes set / unset environment variables properly."
   :tags '(:expensive-test)
   (skip-unless (tramp--test-enabled))
-  (skip-unless (tramp--test-sh-p))
-  (skip-unless (not (tramp--test-crypt-p)))
+  (skip-unless (tramp--test-supports-environment-variables-p))
 
   (dolist (this-shell-command-to-string
 	   (append
@@ -6554,6 +6556,21 @@ INPUT, if non-nil, is a string sent to the process."
 	  (format "%s,foo,tramp:%s\n" emacs-version tramp-version)
 	  (funcall
 	   this-shell-command-to-string "echo \"${INSIDE_EMACS:-bla}\""))))
+
+      ;; Check EMACSCLIENT_TRAMP.
+      (setenv "EMACSCLIENT_TRAMP")
+      (let ((tramp-propagate-emacsclient-tramp t))
+	(should
+	 (string-equal
+	  (format "%s\n" (tramp-make-tramp-file-name tramp-test-vec 'noloc))
+	  (funcall
+	   this-shell-command-to-string "echo \"${EMACSCLIENT_TRAMP:-bla}\""))))
+      (let (tramp-propagate-emacsclient-tramp)
+	(should
+	 (string-equal
+	  "bla\n"
+	  (funcall
+	   this-shell-command-to-string "echo \"${EMACSCLIENT_TRAMP:-bla}\""))))
 
       ;; Set a value.
       (let ((process-environment
@@ -6841,8 +6858,7 @@ INPUT, if non-nil, is a string sent to the process."
   "Check loooong `tramp-remote-path'."
   :tags '(:expensive-test)
   (skip-unless (tramp--test-enabled))
-  (skip-unless (tramp--test-sh-p))
-  (skip-unless (not (tramp--test-crypt-p)))
+  (skip-unless (tramp--test-supports-environment-variables-p))
 
   (let* ((tmp-name1 (tramp--test-make-temp-name))
 	 (default-directory ert-remote-temporary-file-directory)
@@ -7781,6 +7797,11 @@ This requires restrictions of file name syntax."
   (or (tramp--test-adb-p) (tramp--test-gvfs-p)
       (tramp--test-sh-p) (tramp--test-smb-p)
       (tramp--test-sudoedit-p)))
+
+(defun tramp--test-supports-environment-variables-p ()
+  "Return whether setting environment variables is supported."
+  (and (tramp--test-sh-p)
+       (not (tramp--test-crypt-p))))
 
 (defun tramp--test-check-files (&rest files)
   "Run a simple but comprehensive test over every file in FILES."
@@ -9310,9 +9331,6 @@ If INTERACTIVE is non-nil, the tests are run interactively."
 ;;   `tramp-test45-asynchronous-requests'.
 
 ;; Use `skip-when' starting with Emacs 30.1.
-
-;; Starting with Emacs 29, use `ert-with-temp-file' and
-;; `ert-with-temp-directory'.
 
 (provide 'tramp-tests)
 

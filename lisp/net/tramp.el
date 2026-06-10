@@ -801,19 +801,23 @@ The regexp should match at end of buffer."
       (? "/[fingerprint]") ")?"
       (* blank))
   "Regular expression matching all yes/no queries which need to be confirmed.
-The confirmation should be done with yes or no.
+The confirmation should be done with \"yes\" or \"no\".
 The regexp should match at end of buffer.
 See also `tramp-yn-prompt-regexp'."
   :type 'regexp)
 
 (defcustom tramp-yn-prompt-regexp
   (rx (| (: "Store key in cache? (y/n" (* nonl) ")")
-	 "Update cached key? (y/n, Return cancels connection)")
+	 "Update cached key? (y/n, Return cancels connection)"
+	 ;; distrobox.
+	 (: "Error: no such container \"" (+ nonl) "\"\n"
+	    "Create it now, out of image " (+ nonl) "? [Y/n]:"))
       (* blank))
   "Regular expression matching all y/n queries which need to be confirmed.
-The confirmation should be done with y or n.
+The confirmation should be done with \"y\" or \"n\".
 The regexp should match at end of buffer.
 See also `tramp-yesno-prompt-regexp'."
+  :version "31.1"
   :type 'regexp)
 
 ;;;###tramp-autoload
@@ -1528,10 +1532,19 @@ The PATH environment variable should be set via `tramp-remote-path'.
 
 The TERM environment variable should be set via `tramp-terminal-type'.
 
+The EMACSCLIENT_TRAMP environment variable will be set accordingly, if
+`tramp-propagate-emacsclient-tramp' is non-nil.
+
 The INSIDE_EMACS environment variable will automatically be set
 based on the Tramp and Emacs versions, and should not be set here."
   :version "26.1"
   :type '(repeat string)
+  :link '(info-link :tag "Tramp manual" "(tramp) Remote processes"))
+
+(defcustom tramp-propagate-emacsclient-tramp nil
+  "Whether to propagate the EMACSCLIENT_TRAMP environment variable."
+  :version "31.1"
+  :type 'boolean
   :link '(info-link :tag "Tramp manual" "(tramp) Remote processes"))
 
 ;;; Internal Variables:
@@ -5465,7 +5478,11 @@ should be set connection-local.")
   "Return non-nil if ARG exists in default `process-environment'.
 Tramp does not propagate local environment variables in remote
 processes."
-  (member arg (default-toplevel-value 'process-environment)))
+  (or ;; `buffer-local-toplevel-value' has been defined in Emacs 31.1.
+      (ignore-error (void-variable void-function)
+        (member arg (tramp-compat-funcall 'buffer-local-toplevel-value
+		      'process-environment)))
+      (member arg (default-toplevel-value 'process-environment))))
 
 (defun tramp-handle-make-process (&rest args)
   "An alternative `make-process' implementation for Tramp files."
@@ -5508,6 +5525,13 @@ processes."
 	   ;; Add TERM.
 	   (env (if sh-file-name-handler-p
 		    (setenv-internal env "TERM" tramp-terminal-type 'keep)
+		  env))
+	   ;; Add EMACSCLIENT_TRAMP.
+	   (env (if (and tramp-propagate-emacsclient-tramp
+			 sh-file-name-handler-p)
+		    (setenv-internal
+		     env "EMACSCLIENT_TRAMP"
+		     (tramp-make-tramp-file-name v 'noloc) 'keep)
 		  env))
 	   ;; Add INSIDE_EMACS.
 	   (env (setenv-internal env "INSIDE_EMACS" (tramp-inside-emacs) 'keep))
@@ -7390,7 +7414,8 @@ T1 and T2 are time values (as returned by `current-time' for example)."
 Suppress `shell-file-name'.  This is needed on w32 systems, which
 would use a wrong quoting for local file names.  See `w32-shell-name'."
   (let (shell-file-name)
-    (shell-quote-argument (file-name-unquote s))))
+    ;; Do not expand remote file names w/o a localname.
+    (shell-quote-argument (file-name-unquote s 'top))))
 
 ;; Currently (as of Emacs 20.5), the function `shell-quote-argument'
 ;; does not deal well with newline characters.  Newline is replaced by
