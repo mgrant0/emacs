@@ -983,7 +983,7 @@ tty_write_glyphs (struct frame *f, struct glyph *string, int len)
      since that would scroll the whole frame on some terminals.  */
   if (AutoWrap (tty)
       && curY (tty) + 1 == FRAME_TOTAL_LINES (f)
-      && curX (tty) + len == FrameCols (tty)
+      && curX (tty) + len == FRAME_TOTAL_COLS (f)
       && len > 0)
     {
       /* If writing only one glyph in the last column, make that two so

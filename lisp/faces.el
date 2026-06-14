@@ -2932,22 +2932,14 @@ This face is used to customize the appearance of the margin areas."
   :group 'frames
   :group 'basic-faces)
 
-(defface scroll-bar
-  '((((type tty)) :background "black")
-    (t nil))
-  "Basic face for the scroll bar colors under X.
-On TTY frames, this face determines the appearance of the scroll bar
-gutter (track).  The default TTY appearance is a black background."
+(defface scroll-bar '((t nil))
+  "Basic face for the scroll bar colors under X and on TTY frames.
+The foreground color is used for the scroll-bar thumb (the draggable
+portion) and the background color is used for the track (the gutter).
+On TTY frames the thumb is rendered with the foreground and background
+colors swapped relative to the track, so setting the foreground and
+background of this face controls both elements."
   :version "21.1"
-  :group 'frames
-  :group 'basic-faces)
-
-(defface scroll-bar-thumb
-  '((((type tty)) :inverse-video t)
-    (t nil))
-  "Basic face for the scroll bar thumb (draggable portion) in TTY frames.
-On character-based terminals, the thumb is rendered as inverse-video spaces."
-  :version "30.1"
   :group 'frames
   :group 'basic-faces)
 

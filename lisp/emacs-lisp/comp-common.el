@@ -145,11 +145,12 @@ Used to modify the compiler environment."
     (cons (function (t t) cons))
     (consp (function (t) boolean))
     (coordinates-in-window-p
-     (function (cons window)
+     (function (cons window &optional t)
                (or cons null
                    (member bottom-divider right-divider mode-line header-line
                            tab-line left-fringe right-fringe vertical-line
-                           left-margin right-margin))))
+                           left-margin right-margin
+                           vertical-scroll-bar horizontal-scroll-bar))))
     (copy-alist (function (list) list))
     (copy-marker (function (&optional (or integer marker) boolean) marker))
     (copy-sequence (function (sequence) sequence))

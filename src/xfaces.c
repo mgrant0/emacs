@@ -5255,7 +5255,10 @@ lookup_basic_face (struct window *w, struct frame *f, int face_id)
     case INTERNAL_BORDER_FACE_ID:	name = Qinternal_border; 	break;
     case CHILD_FRAME_BORDER_FACE_ID:	name = Qchild_frame_border; 	break;
     case MARGIN_FACE_ID:		name = Qmargin;			break;
-    case SCROLL_BAR_THUMB_FACE_ID:	name = Qscroll_bar_thumb;	break;
+    case SCROLL_BAR_THUMB_FACE_ID:
+      /* Internally derived face (scroll-bar inverse-video, just swaps fg
+	 and bg colors); no name, not user-remappable. */
+      return face_id;
 
     default:
       emacs_abort (); /* the caller is supposed to pass us a basic face id */
@@ -6024,7 +6027,26 @@ realize_basic_faces (struct frame *f)
       realize_named_face (f, Qtab_line_active, TAB_LINE_ACTIVE_FACE_ID);
       realize_named_face (f, Qtab_line_inactive, TAB_LINE_INACTIVE_FACE_ID);
       realize_named_face (f, Qmargin, MARGIN_FACE_ID);
-      realize_named_face (f, Qscroll_bar_thumb, SCROLL_BAR_THUMB_FACE_ID);
+      /* Realize the scroll-bar thumb face as an internal face derived from
+	 the scroll-bar face with inverse-video.  On TTY frames this makes
+	 the thumb show the scroll-bar foreground color (= thumb color) as
+	 the displayed color of the space glyph, matching the X convention
+	 that the scroll-bar face foreground is the thumb and its background
+	 is the track.  There is no user-visible defface for this face;
+	 it is computed entirely from the scroll-bar face.  */
+      {
+	Lisp_Object thumb_attrs[LFACE_VECTOR_SIZE];
+	get_lface_attributes_no_remap (f, Qdefault, thumb_attrs, true);
+	Lisp_Object sb_lface_attrs[LFACE_VECTOR_SIZE];
+	get_lface_attributes_no_remap (f, Qscroll_bar, sb_lface_attrs, true);
+	int i;
+	for (i = 1; i < LFACE_VECTOR_SIZE; i++)
+	  if (EQ (sb_lface_attrs[i], Qreset))
+	    sb_lface_attrs[i] = thumb_attrs[i];
+	merge_face_vectors (NULL, f, sb_lface_attrs, thumb_attrs, 0);
+	thumb_attrs[LFACE_INVERSE_INDEX] = Qt;
+	realize_face (FRAME_FACE_CACHE (f), thumb_attrs, SCROLL_BAR_THUMB_FACE_ID);
+      }
       unbind_to (count, Qnil);
 
       /* Reflect changes in the `menu' face in menu bars.  */
@@ -7589,7 +7611,6 @@ syms_of_xfaces (void)
   DEFSYM (Qheader_line_inactive, "header-line-inactive");
   DEFSYM (Qheader_line_active, "header-line-active");
   DEFSYM (Qscroll_bar, "scroll-bar");
-  DEFSYM (Qscroll_bar_thumb, "scroll-bar-thumb");
   DEFSYM (Qmenu, "menu");
   DEFSYM (Qcursor, "cursor");
   DEFSYM (Qborder, "border");

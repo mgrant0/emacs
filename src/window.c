@@ -1550,7 +1550,7 @@ window_relative_x_coord (struct window *w, enum window_part part, int x)
 
 
 DEFUN ("coordinates-in-window-p", Fcoordinates_in_window_p,
-       Scoordinates_in_window_p, 2, 2, 0,
+       Scoordinates_in_window_p, 2, 3, 0,
        doc: /* Return non-nil if COORDINATES are in WINDOW.
 WINDOW must be a live window and defaults to the selected one.
 COORDINATES is a cons of the form (X . Y), X and Y being distances
@@ -1569,8 +1569,16 @@ If they are in the right fringe of WINDOW, `right-fringe' is returned.
 If they are on the border between WINDOW and its right sibling,
   `vertical-line' is returned.
 If they are in the windows's left or right marginal areas, `left-margin'\n\
-  or `right-margin' is returned.  */)
-  (register Lisp_Object coordinates, Lisp_Object window)
+  or `right-margin' is returned.
+
+Optional argument REPORT-SCROLL-BARS, if non-nil, causes the function
+to report when coordinates fall in a scroll bar.  In that case,
+`vertical-scroll-bar' is returned for the vertical scroll bar and
+`horizontal-scroll-bar' for the horizontal scroll bar.  When this
+argument is nil (the default), nil is returned for scroll-bar
+coordinates for backward-compatibility.  */)
+  (register Lisp_Object coordinates, Lisp_Object window,
+   Lisp_Object report_scroll_bars)
 {
   struct window *w;
   struct frame *f;
@@ -1625,11 +1633,12 @@ If they are in the windows's left or right marginal areas, `left-margin'\n\
       return Qright_margin;
 
     case ON_VERTICAL_SCROLL_BAR:
-      /* Historically we are supposed to return nil in this case.  */
-      return Qnil;
+      /* Historically we are supposed to return nil in this case.  When
+	 REPORT-SCROLL-BARS is non-nil, report the scroll-bar area.  */
+      return NILP (report_scroll_bars) ? Qnil : Qvertical_scroll_bar;
 
     case ON_HORIZONTAL_SCROLL_BAR:
-      return Qnil;
+      return NILP (report_scroll_bars) ? Qnil : Qhorizontal_scroll_bar;
 
     case ON_RIGHT_DIVIDER:
       return Qright_divider;

@@ -3970,6 +3970,40 @@ flush_terminal (struct frame *f)
   fflush (FRAME_TTY (f)->output);
 }
 
+/* Compute the thumb position within SB_ROWS scroll-bar rows.
+   PORTION is the number of visible characters, WHOLE the total buffer
+   size, and POSITION the character offset of the first visible line.
+   On return *THUMB_START_OUT and *THUMB_END_OUT are the zero-based
+   (inclusive start, exclusive end) row indices of the thumb within
+   [0, SB_ROWS).
+
+   Thumb height is fixed at max(1, floor(portion/whole * sb_rows)) and
+   does not change as the user scrolls.  POSITION is then mapped within
+   [0, whole-portion] to thumb_start within [0, sb_rows-thumb_height],
+   so the thumb abuts the top rail when position==0 and the bottom rail
+   when position+portion==whole.  */
+static void
+tty_compute_scroll_bar_thumb (int portion, int whole, int position,
+			       int sb_rows,
+			       int *thumb_start_out, int *thumb_end_out)
+{
+  int thumb_start = 0, thumb_end = sb_rows;
+  if (whole > 0 && portion < whole)
+    {
+      int thumb_height = (int) ((double) portion / whole * sb_rows);
+      if (thumb_height < 1)
+	thumb_height = 1;
+      int track_rows = sb_rows - thumb_height;
+      int scrollable = whole - portion;
+      if (scrollable > 0 && track_rows > 0)
+	thumb_start = (int) ((double) position / scrollable * track_rows);
+      thumb_start = max (0, min (thumb_start, track_rows));
+      thumb_end = thumb_start + thumb_height;
+    }
+  *thumb_start_out = thumb_start;
+  *thumb_end_out   = thumb_end;
+}
+
 /* Apply TTY character-based scroll bar glyphs for window W into the
    desired matrix of its frame.  Called recursively for the window tree.  */
 static void
@@ -4046,41 +4080,9 @@ tty_apply_scroll_bar_glyphs_for_window (struct frame *f, struct window *w)
   if (right_border)
     frame_col -= 1;
 
-  /* Compute thumb position within sb_rows.
-     The hook passes: portion = visible chars, whole = total chars,
-     position = char position of first visible line.
-     When the whole buffer fits in the window, portion >= whole and the
-     thumb spans the full bar.
-
-     We compute the track regions above and below the thumb by rounding
-     each down separately.  This keeps the thumb height constant as the
-     user scrolls: the thumb always abuts the top rail when position==0
-     and the bottom rail when position+portion==whole.  */
-  int thumb_start = 0, thumb_end = sb_rows;
-  if (whole > 0 && portion < whole)
-    {
-      int track_above = (int) ((double) position / whole * sb_rows);
-      ptrdiff_t below_chars = (ptrdiff_t) whole - position - portion;
-      int track_below = (below_chars > 0)
-	? (int) ((double) below_chars / whole * sb_rows) : 0;
-      /* When content exists beyond the visible area but the proportional
-	 track size rounds to zero, ensure at least 1 track row so the
-	 thumb never appears full-height when the buffer is not fully
-	 visible.  */
-      if (position > 0 && track_above == 0)
-	track_above = 1;
-      if (below_chars > 0 && track_below == 0)
-	track_below = 1;
-      thumb_start = track_above;
-      thumb_end   = sb_rows - track_below;
-      /* Guarantee at least a 1-row thumb.  */
-      if (thumb_end <= thumb_start)
-	thumb_end = thumb_start + 1;
-      thumb_start = min (thumb_start, sb_rows - 1);
-      thumb_end   = min (thumb_end,   sb_rows);
-      if (thumb_start >= thumb_end)
-	thumb_end = thumb_start + 1;
-    }
+  int thumb_start, thumb_end;
+  tty_compute_scroll_bar_thumb (portion, whole, position, sb_rows,
+				&thumb_start, &thumb_end);
 
   /* Write scroll bar glyphs into the frame desired matrix.  */
   for (int r = 0; r < sb_rows; r++)
@@ -4125,6 +4127,72 @@ tty_apply_scroll_bar_glyphs (struct frame *f)
   if (!f->desired_matrix)
     return;
   tty_apply_scroll_bar_glyphs_for_window (f, XWINDOW (f->root_window));
+}
+
+DEFUN ("tty-scroll-bar-thumb-rows", Ftty_scroll_bar_thumb_rows,
+       Stty_scroll_bar_thumb_rows, 1, 1, 0,
+  doc: /* Return scroll-bar thumb row bounds for WINDOW as (START . END).
+START and END are zero-based row numbers within the scroll bar; the
+thumb occupies rows START through END-1 (exclusive).
+Returns nil if the buffer is empty or the window has no body rows.
+When scroll-bar data has been cached by a prior redisplay this function
+uses the same formula as the TTY renderer, so its result always agrees
+with what is drawn on screen.  When no cached data is available yet
+\(e.g. in batch mode or before the first redisplay) it derives the
+geometry from the current buffer/window state instead.  */)
+  (Lisp_Object window)
+{
+  struct window *w = decode_live_window (window);
+
+  int portion, whole, position;
+  Lisp_Object sb_data = w->vertical_scroll_bar;
+  if (VECTORP (sb_data) && ASIZE (sb_data) >= 3
+      && FIXNUMP (AREF (sb_data, 0)))
+    {
+      /* Cached values from the last redisplay — most accurate.  */
+      portion  = XFIXNUM (AREF (sb_data, 0));
+      whole    = XFIXNUM (AREF (sb_data, 1));
+      position = XFIXNUM (AREF (sb_data, 2));
+    }
+  else
+    {
+      /* No cached data yet (e.g. batch mode, before first redisplay).
+	 Compute from current buffer state using the same values that
+	 set_vertical_scroll_bar in xdisp.c passes to the hook.
+	 portion (visible window size) is approximated as body height in
+	 lines; since the formula only uses portion to compute below_chars
+	 = whole - position - portion, a small underestimate is safe.  */
+      struct buffer *buf = XBUFFER (w->contents);
+      ptrdiff_t bz  = BUF_ZV (buf) - BUF_BEGV (buf);
+      ptrdiff_t pos = marker_position (w->start) - BUF_BEGV (buf);
+      if (pos < 0)   pos = 0;
+      if (pos > bz)  pos = bz;
+      if (bz <= 0)
+	return Qnil;
+      whole    = (int) min (bz,  INT_MAX);
+      position = (int) min (pos, INT_MAX);
+      portion  = max (window_body_height (w, 0), 1);
+      if (portion > whole) portion = whole;
+    }
+
+  /* Compute the number of usable scroll-bar rows the same way as the
+     renderer: total window lines minus mode line, header line, tab line.  */
+  int nrows = WINDOW_TOTAL_LINES (w);
+  if (window_wants_mode_line (w))
+    nrows--;
+  int top_skip = 0;
+  if (window_wants_tab_line (w))
+    top_skip++;
+  if (window_wants_header_line (w))
+    top_skip++;
+  int sb_rows = nrows - top_skip;
+  if (sb_rows <= 0)
+    return Qnil;
+
+  int thumb_start, thumb_end;
+  tty_compute_scroll_bar_thumb (portion, whole, position, sb_rows,
+				&thumb_start, &thumb_end);
+  return Fcons (make_fixnum (thumb_start), make_fixnum (thumb_end));
 }
 
 static void
@@ -7701,6 +7769,7 @@ syms_of_display (void)
   defsubr (&Sinternal_show_cursor);
   defsubr (&Sinternal_show_cursor_p);
   defsubr (&Sframe__z_order_lessp);
+  defsubr (&Stty_scroll_bar_thumb_rows);
 
 #ifdef GLYPH_DEBUG
   defsubr (&Sdump_redisplay_history);

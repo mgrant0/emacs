@@ -92,7 +92,6 @@ SIDE must be the symbol `left' or `right'."
   "Non-nil means `set-scroll-bar-mode' should really do something.
 This is nil while loading `scroll-bar.el', and t afterward.")
 
-;;;###autoload
 (defun set-scroll-bar-mode (value)
   "Set the scroll bar mode to VALUE and put the new value into effect.
 See the `scroll-bar-mode' variable for possible values to use."
@@ -105,7 +104,6 @@ See the `scroll-bar-mode' variable for possible values to use."
     (modify-all-frames-parameters (list (cons 'vertical-scroll-bars
 					      scroll-bar-mode)))))
 
-(custom-autoload 'scroll-bar-mode "scroll-bar" t)
 (defcustom scroll-bar-mode default-frame-scroll-bars
   "Specify whether to have vertical scroll bars, and on which side.
 Possible values are nil (no scroll bars), `left' (scroll bars on left)
@@ -316,30 +314,12 @@ If you click outside the slider, the window scrolls to bring the slider there."
 (defun tty-scroll-bar--thumb-geometry (window)
   "Return (START . END) thumb geometry for WINDOW's TTY scroll bar.
 START and END are 0-indexed row numbers; the thumb occupies rows
-\[START, END) (exclusive END).  Mirrors the formula in C function
-`tty_apply_scroll_bar_glyphs_for_window'."
-  (let* ((buf     (window-buffer window))
-         (win-ht  (window-body-height window))
-         (whole   (buffer-size buf))
-         (pos     (with-current-buffer buf
-                    (- (window-start window) (point-min))))
-         (portion (- (window-end window t) (window-start window))))
-    (if (or (<= whole 0) (>= portion whole))
-        (cons 0 win-ht)
-      (let* ((ta    (floor (* (/ (float pos) whole) win-ht)))
-             (below (- whole pos portion))
-             (tb    (if (> below 0)
-                        (floor (* (/ (float below) whole) win-ht))
-                      0)))
-        (when (and (> pos 0) (= ta 0)) (setq ta 1))
-        (when (and (> below 0) (= tb 0)) (setq tb 1))
-        (let ((ts ta)
-              (te (- win-ht tb)))
-          (when (<= te ts) (setq te (1+ ts)))
-          (setq ts (min ts (1- win-ht)))
-          (setq te (min te win-ht))
-          (when (>= ts te) (setq te (1+ ts)))
-          (cons ts te))))))
+\[START, END) (exclusive END).  Delegates to `tty-scroll-bar-thumb-rows',
+which uses the same formula as the C renderer, so the result always
+agrees with what is drawn on screen."
+  (or (tty-scroll-bar-thumb-rows window)
+      ;; Fallback: no scroll-bar data yet; treat the full bar as the thumb.
+      (cons 0 (window-body-height window))))
 
 (defun tty-scroll-bar--thumb-start (window)
   "Return the 0-indexed thumb-start row for WINDOW's TTY scroll bar."
@@ -361,7 +341,7 @@ The grab point — the row within the thumb where the drag was initiated
 rather than jumping to align its top edge with the cursor."
   (interactive "e")
   (let* ((start-pos    (event-start event))
-         (window       (nth 0 start-pos))
+         (window       (posn-window start-pos))
          (click-sb-row (car (nth 2 start-pos)))
          (grab-offset  (max 0 (- click-sb-row
                                  (tty-scroll-bar--thumb-start window)))))
@@ -373,7 +353,7 @@ rather than jumping to align its top edge with the cursor."
              ((eq (car-safe ev) 'scroll-bar-movement)
               ;; Mouse moved within the scroll bar: extract sb-row from
               ;; the event's (PORTION . WHOLE) field directly.
-              (let* ((posn   (nth 1 ev))
+              (let* ((posn   (event-start ev))
                      (ratio  (nth 2 posn))
                      (win-ht (window-body-height window))
                      (sb-row (max 0 (min (1- win-ht)

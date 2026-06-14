@@ -131,104 +131,22 @@ https://invisible-island.net/xterm/ctlseqs/ctlseqs.html)."
                 (xterm-mouse--handle-mouse-movement)
 		(vector (list 'mouse-movement ev-data))))))))))))
 
-(defun xterm-mouse--tty-scroll-bar-window (x y frame)
-  "Return the window whose TTY scroll bar column is at frame column X, row Y.
-Returns nil if no TTY scroll bar occupies position (X, Y)."
-  (let ((sb-side (frame-parameter frame 'vertical-scroll-bars))
-        result)
-    (when sb-side
-      (walk-windows
-       (lambda (w)
-         (unless result
-           (let* ((edges      (window-edges w))
-                  (win-top    (nth 1 edges))
-                  (right-edge (nth 2 edges))
-                  (win-bot    (nth 3 edges))
-                  (sb-col
-                   (cond
-                    ((eq sb-side 'left) (window-left-column w))
-                    ((eq sb-side 'right)
-                     ;; On TTY frames a right scroll bar on a non-rightmost
-                     ;; window has its indicator one column left of the last
-                     ;; column, which holds the '|' border glyph.  Layout:
-                     ;; [content][SB][|].  On the rightmost window there is
-                     ;; no '|', so the SB occupies the last column as usual.
-                     ;;
-                     ;; NOTE: (frame-width) returns the TEXT-area column
-                     ;; count (excluding the SB column), so the rightmost
-                     ;; window has right-edge = (1+ (frame-width frame)).
-                     (if (and (not (display-graphic-p))
-                              (/= right-edge
-                                  (1+ (frame-width (window-frame w)))))
-                         (- right-edge 2)
-                       (1- right-edge))))))
-             (when (and sb-col
-                        (= x sb-col)
-                        (<= win-top y)
-                        (< y win-bot))
-               (setq result w)))))
-       nil frame))
-    result))
-
-(defun xterm-mouse--tty-vertical-border-window (x y frame)
-  "Return the window whose TTY `|' border column is at frame column X, row Y.
-Returns nil unless (X, Y) is on the `|' border of a non-rightmost TTY
-window with a right scroll bar.  In that layout, [content][SB][|], the
-`|' occupies the last column of the window's total-width allocation."
-  (when (and (not (display-graphic-p))
-             (eq (frame-parameter frame 'vertical-scroll-bars) 'right))
-    (let (result)
-      (walk-windows
-       (lambda (w)
-         (unless result
-           (let* ((edges      (window-edges w))
-                  (win-top    (nth 1 edges))
-                  (right-edge (nth 2 edges))
-                  (win-bot    (nth 3 edges)))
-             (when (and (/= right-edge (1+ (frame-width (window-frame w))))
-                        (= x (1- right-edge))
-                        (<= win-top y)
-                        (< y win-bot))
-               (setq result w)))))
-       nil frame)
-      result)))
-
 (defun xterm-mouse--tty-scroll-bar-part (window y)
   "Return the scroll bar part clicked at terminal row Y for WINDOW.
-Returns one of the symbols `above-handle', `handle', or `below-handle'."
-  (let* ((buf         (window-buffer window))
-         (win-height  (window-body-height window))
-         (win-top     (window-top-line window))
-         (sb-row      (max 0 (min (1- win-height) (- y win-top))))
-         (buf-size    (buffer-size buf))
-         (win-start   (window-start window))
-         (win-end     (window-end window t))
-         ;; Use position relative to point-min, matching the C formula
-         ;; (set_vertical_scroll_bar uses start = window-start - BUF_BEGV)
-         ;; and tty-scroll-bar--thumb-geometry.
-         (pos         (with-current-buffer buf (- win-start (point-min))))
-         (portion     (max 1 (- win-end win-start)))
-         (whole       (max portion buf-size))
-         ;; Mirror the C formula: compute track above and below separately.
-         (track-above (if (> whole 0)
-                          (floor (* pos (/ (float win-height) whole)))
-                        0))
-         (below-chars (max 0 (- whole pos portion)))
-         (track-below (if (> whole 0)
-                          (floor (* below-chars (/ (float win-height) whole)))
-                        0))
-         (thumb-start track-above)
-         (thumb-end   (- win-height track-below)))
-    ;; Mirror the clamping sequence in tty-scroll-bar--thumb-geometry so
-    ;; the classifier always agrees with the renderer about thumb position.
-    (when (<= thumb-end thumb-start) (setq thumb-end (1+ thumb-start)))
-    (setq thumb-start (min thumb-start (1- win-height)))
-    (setq thumb-end   (min thumb-end   win-height))
-    (when (>= thumb-start thumb-end) (setq thumb-end (1+ thumb-start)))
-    (cond
-     ((< sb-row thumb-start)  'above-handle)
-     ((>= sb-row thumb-end)   'below-handle)
-     (t                       'handle))))
+Returns one of the symbols `above-handle', `handle', or `below-handle'.
+Uses `tty-scroll-bar-thumb-rows' (the authoritative C formula) so the
+classifier always agrees with what the renderer drew on screen."
+  (let* ((win-top (window-top-line window))
+         (win-ht  (window-body-height window))
+         (sb-row  (max 0 (min (1- win-ht) (- y win-top))))
+         (geom    (tty-scroll-bar-thumb-rows window)))
+    (if geom
+        (cond
+         ((< sb-row (car geom))  'above-handle)
+         ((>= sb-row (cdr geom)) 'below-handle)
+         (t                      'handle))
+      ;; No scroll-bar data yet; treat the whole bar as the handle.
+      'handle)))
 
 (defun xterm-mouse--handle-mouse-movement ()
   "Handle mouse motion that was just generated for XTerm mouse."
@@ -405,12 +323,46 @@ which is the \"1006\" extension implemented in Xterm >= 277."
              (x (or (nth 1 frame-and-xy) x))
              (y (or (nth 2 frame-and-xy) y))
              (w (window-at x y frame))
+             ;; On TTY frames, determine whether the click is in a scroll bar
+             ;; or on the vertical border `|', using the C coordinate
+             ;; classifier.  We do this only for click/drag events, not mouse
+             ;; movement, so that movement stays cheap and doesn't disturb
+             ;; normal highlighting.
+             (tty-part (and (not (display-graphic-p))
+                            frame
+                            w
+                            (not (eq type 'mouse-movement))
+                            (coordinates-in-window-p (cons x y) w t)))
              (posn
-	      (if w
-		  (let* ((ltrb (window-edges w))
-			 (left (nth 0 ltrb))
-			 (top (nth 1 ltrb)))
-		    (posn-at-x-y (- x left) (- y top) w t))
+	      (cond
+               ;; TTY vertical scroll bar: build a scroll-bar posn in the
+               ;; same format as make_scroll_bar_position in keyboard.c:
+               ;;   (window AREA (pos . size) timestamp part)
+               ;; AREA must be the bare symbol `vertical-scroll-bar' (not a
+               ;; cons) so that read_key_sequence's SYMBOLP check expands the
+               ;; event to [vertical-scroll-bar mouse-1], which fires
+               ;; `scroll-bar-toolkit-scroll'.
+               ((eq tty-part 'vertical-scroll-bar)
+                (let* ((win-ht  (window-body-height w))
+                       (win-top (window-top-line w))
+                       (sb-row  (max 0 (min (1- win-ht) (- y win-top))))
+                       (part    (xterm-mouse--tty-scroll-bar-part w y)))
+                  (list w 'vertical-scroll-bar
+                        (cons sb-row win-ht) timestamp part)))
+               ;; TTY vertical border `|': generate a vertical-line posn so
+               ;; that [vertical-line down-mouse-1] → mouse-drag-vertical-line
+               ;; fires.
+               ((eq tty-part 'vertical-line)
+                (list w 'vertical-line (cons x y) timestamp))
+	       ;; Normal window: text area, fringe, margin, etc.
+	       (w
+		(let* ((ltrb (window-edges w))
+		       (left (nth 0 ltrb))
+		       (top (nth 1 ltrb)))
+		  (posn-at-x-y (- x left) (- y top) w t)))
+               ;; No window under cursor: frame chrome (menu-bar, tab-bar,
+               ;; corners, edges).
+	       (t
 		(let* ((frame-has-menu-bar
 			(not (zerop (frame-parameter frame 'menu-bar-lines))))
 		       (frame-has-tab-bar
@@ -439,60 +391,7 @@ which is the \"1006\" extension implemented in Xterm >= 277."
 		  (append (list (unless (memq item '(menu-bar tab-bar))
 				  frame)
 				item)
-			  (nthcdr 2 (posn-at-x-y x y (selected-frame)))))))
-             ;; Check for a click in a TTY vertical scroll bar column.
-             ;; When detected, replace the position with a scroll bar
-             ;; position so that [vertical-scroll-bar mouse-N] bindings fire.
-             (sb-window (and (not (display-graphic-p))
-                             frame
-                             (not (eq type 'mouse-movement))
-                             (xterm-mouse--tty-scroll-bar-window x y frame)))
-             (posn (if sb-window
-                       (let* ((win-ht  (window-body-height sb-window))
-                              (win-top (window-top-line sb-window))
-                              (sb-row  (max 0 (min (1- win-ht) (- y win-top))))
-                              (part    (xterm-mouse--tty-scroll-bar-part
-                                        sb-window y))
-                              ;; For button-up events: if the drag started on
-                              ;; the scroll-bar handle, keep part='handle' so
-                              ;; scroll-bar-drag-1 proportionally scrolls to
-                              ;; the release position rather than paging.
-                              (down-ev  (terminal-parameter
-                                         nil 'xterm-mouse-last-down))
-                              (down-part (and down-ev
-                                             (nth 4 (nth 1 down-ev))))
-                              (part     (if (and (not (string-prefix-p
-                                                       "down-"
-                                                       (symbol-name type)))
-                                                 (eq down-part 'handle))
-                                            'handle
-                                          part)))
-                         ;; Build a scroll-bar position in the same format as
-                         ;; make_scroll_bar_position in keyboard.c:
-                         ;;   (window AREA (pos . size) timestamp part)
-                         ;; AREA must be the bare symbol `vertical-scroll-bar'
-                         ;; (not a cons) so that read_key_sequence's SYMBOLP
-                         ;; check expands the event to [vertical-scroll-bar
-                         ;; mouse-1], which fires `scroll-bar-toolkit-scroll'.
-                         (list sb-window
-                               'vertical-scroll-bar
-                               (cons sb-row win-ht)
-                               timestamp
-                               part))
-                     posn))
-             ;; Check for a click on the TTY '|' window border.
-             ;; For a right scroll bar on a non-rightmost TTY window the '|'
-             ;; glyph occupies the last column of the window allocation; a
-             ;; click there should generate a vertical-line position so that
-             ;; [vertical-line down-mouse-1] → mouse-drag-vertical-line fires.
-             (border-window (and (not sb-window)
-                                 frame
-                                 (not (eq type 'mouse-movement))
-                                 (xterm-mouse--tty-vertical-border-window
-                                  x y frame)))
-             (posn (if border-window
-                       (list border-window 'vertical-line (cons x y) timestamp)
-                     posn))
+			  (nthcdr 2 (posn-at-x-y x y (selected-frame))))))))
              (event (list type posn)))
         (setcar (nthcdr 3 posn) timestamp)
 
