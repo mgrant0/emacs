@@ -203,19 +203,28 @@ Returns one of the symbols `above-handle', `handle', or `below-handle'."
          (buf-size    (buffer-size buf))
          (win-start   (window-start window))
          (win-end     (window-end window t))
+         ;; Use position relative to point-min, matching the C formula
+         ;; (set_vertical_scroll_bar uses start = window-start - BUF_BEGV)
+         ;; and tty-scroll-bar--thumb-geometry.
+         (pos         (with-current-buffer buf (- win-start (point-min))))
          (portion     (max 1 (- win-end win-start)))
          (whole       (max portion buf-size))
          ;; Mirror the C formula: compute track above and below separately.
          (track-above (if (> whole 0)
-                          (floor (* win-start (/ (float win-height) whole)))
+                          (floor (* pos (/ (float win-height) whole)))
                         0))
-         (below-chars (max 0 (- whole win-start portion)))
+         (below-chars (max 0 (- whole pos portion)))
          (track-below (if (> whole 0)
                           (floor (* below-chars (/ (float win-height) whole)))
                         0))
          (thumb-start track-above)
          (thumb-end   (- win-height track-below)))
-    (when (>= thumb-end win-height) (setq thumb-end (1- win-height)))
+    ;; Mirror the clamping sequence in tty-scroll-bar--thumb-geometry so
+    ;; the classifier always agrees with the renderer about thumb position.
+    (when (<= thumb-end thumb-start) (setq thumb-end (1+ thumb-start)))
+    (setq thumb-start (min thumb-start (1- win-height)))
+    (setq thumb-end   (min thumb-end   win-height))
+    (when (>= thumb-start thumb-end) (setq thumb-end (1+ thumb-start)))
     (cond
      ((< sb-row thumb-start)  'above-handle)
      ((>= sb-row thumb-end)   'below-handle)

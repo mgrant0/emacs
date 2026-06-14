@@ -380,9 +380,13 @@ rather than jumping to align its top edge with the cursor."
                                          (- (car ratio) grab-offset)))))
                 (when (> win-ht 0)
                   (with-current-buffer (window-buffer window)
+                    ;; Divide by (1- win-ht) so sb-row = win-ht-1 (the
+                    ;; maximum, when the thumb is dragged to the very
+                    ;; bottom) maps to point-max, putting the last buffer
+                    ;; line at the top of the window.
                     (goto-char (+ (point-min)
                                   (/ (* sb-row (- (point-max) (point-min)))
-                                     win-ht)))
+                                     (max 1 (1- win-ht)))))
                     (vertical-motion 0 window)
                     (set-window-start window (point))))))
              ((mouse-movement-p ev)
@@ -397,7 +401,7 @@ rather than jumping to align its top edge with the cursor."
                   (with-current-buffer (window-buffer window)
                     (goto-char (+ (point-min)
                                   (/ (* sb-row (- (point-max) (point-min)))
-                                     win-ht)))
+                                     (max 1 (1- win-ht)))))
                     (vertical-motion 0 window)
                     (set-window-start window (point))))))
              (t
