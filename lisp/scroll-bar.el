@@ -342,6 +342,8 @@ rather than jumping to align its top edge with the cursor."
   (interactive "e")
   (let* ((start-pos    (event-start event))
          (window       (posn-window start-pos))
+         (top-skip     (+ (if (> (window-header-line-height window) 0) 1 0)
+                          (if (> (window-tab-line-height window) 0) 1 0)))
          (click-sb-row (car (nth 2 start-pos)))
          (grab-offset  (max 0 (- click-sb-row
                                  (tty-scroll-bar--thumb-start window)))))
@@ -376,7 +378,7 @@ rather than jumping to align its top edge with the cursor."
                      (win-ht  (window-body-height window))
                      (win-top (window-top-line window))
                      (sb-row  (max 0 (min (1- win-ht)
-                                          (- (- y win-top) grab-offset)))))
+                                          (- (- y win-top top-skip) grab-offset)))))
                 (when (> win-ht 0)
                   (with-current-buffer (window-buffer window)
                     (goto-char (+ (point-min)

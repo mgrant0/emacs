@@ -138,7 +138,9 @@ Uses `tty-scroll-bar-thumb-rows' (the authoritative C formula) so the
 classifier always agrees with what the renderer drew on screen."
   (let* ((win-top (window-top-line window))
          (win-ht  (window-body-height window))
-         (sb-row  (max 0 (min (1- win-ht) (- y win-top))))
+         (top-skip (+ (if (> (window-header-line-height window) 0) 1 0)
+                      (if (> (window-tab-line-height window) 0) 1 0)))
+         (sb-row  (max 0 (min (1- win-ht) (- y win-top top-skip))))
          (geom    (tty-scroll-bar-thumb-rows window)))
     (if geom
         (cond
@@ -345,7 +347,9 @@ which is the \"1006\" extension implemented in Xterm >= 277."
                ((eq tty-part 'vertical-scroll-bar)
                 (let* ((win-ht  (window-body-height w))
                        (win-top (window-top-line w))
-                       (sb-row  (max 0 (min (1- win-ht) (- y win-top))))
+                       (top-skip (+ (if (> (window-header-line-height w) 0) 1 0)
+                                    (if (> (window-tab-line-height w) 0) 1 0)))
+                       (sb-row  (max 0 (min (1- win-ht) (- y win-top top-skip))))
                        (part    (xterm-mouse--tty-scroll-bar-part w y)))
                   (list w 'vertical-scroll-bar
                         (cons sb-row win-ht) timestamp part)))
