@@ -1146,11 +1146,11 @@ prepare_desired_row (struct window *w, struct glyph_row *row, bool mode_line_p)
 	 displaying the mode/header/tab line in this window, and so the
 	 marginal areas of this glyph row should be eliminated.  This
 	 is needed when the mode/header/tab line is switched on in a
-	 window that has display margins.  */
-      if (w->left_margin_cols > 0)
-	row->glyphs[TEXT_AREA] = row->glyphs[LEFT_MARGIN_AREA];
-      if (w->right_margin_cols > 0)
-	row->glyphs[RIGHT_MARGIN_AREA] = row->glyphs[LAST_AREA];
+	 window that has display margins or TTY scroll bars.  */
+      row->glyphs[TEXT_AREA] = row->glyphs[LEFT_MARGIN_AREA];
+      row->glyphs[RIGHT_MARGIN_AREA]
+	= row->glyphs[TEXT_AREA] + w->desired_matrix->matrix_w;
+      row->glyphs[LAST_AREA] = row->glyphs[RIGHT_MARGIN_AREA];
     }
   else
     {
