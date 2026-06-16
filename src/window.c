@@ -1445,6 +1445,26 @@ coordinates_in_window (register struct window *w, int x, int y)
       right_x = WINDOW_BOX_RIGHT_EDGE_X (w) - 1;
     }
 
+  /* For a TTY non-rightmost window with a right scroll bar the
+     renderer shifts the SB one column left (so the '|' border can
+     occupy the last column of the window allocation).  The visual
+     layout is [text][SB][|], so classify accordingly before the
+     generic checks below would get it backwards.  */
+  if (!FRAME_WINDOW_P (f)
+      && !w->pseudo_window_p
+      && WINDOW_HAS_VERTICAL_SCROLL_BAR_ON_RIGHT (w)
+      && !WINDOW_RIGHTMOST_P (w)
+      && WINDOW_RIGHT_DIVIDER_WIDTH (w) == 0)
+    {
+      /* right_x is the last column of the text box; the SB glyph is
+	 drawn there (shifted left by 1 from its allocation).  */
+      if (x == right_x)
+	return ON_VERTICAL_SCROLL_BAR;
+      /* The border '|' sits one column further right.  */
+      if (x == right_x + WINDOW_SCROLL_BAR_COLS (w))
+	return ON_VERTICAL_BORDER;
+    }
+
   /* Outside any interesting column?  */
   if (x < left_x || x > right_x)
     return ON_VERTICAL_SCROLL_BAR;
