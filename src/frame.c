@@ -1052,7 +1052,7 @@ adjust_frame_size (struct frame *f, int new_text_width, int new_text_height,
 	 manipulating video hardware.  */
       if (is_tty_root_frame (f))
 	if ((FRAME_TERMCAP_P (f) && !pretend) || FRAME_MSDOS_P (f))
-	  FrameCols (FRAME_TTY (f)) = new_text_cols;
+	  FrameCols (FRAME_TTY (f)) = new_text_cols + FRAME_SCROLL_BAR_COLS (f);
 
 #if defined (HAVE_WINDOW_SYSTEM)
       if (WINDOWP (f->tab_bar_window))
@@ -2011,8 +2011,8 @@ do_switch_frame (Lisp_Object frame, int track, int for_deletion, Lisp_Object nor
 	      /* If the new TTY frame changed dimensions, we need to
 		 resync term.c's idea of the frame size with the new
 		 frame's data.  */
-	      if (FRAME_COLS (f) != FrameCols (tty))
-		FrameCols (tty) = FRAME_COLS (f);
+	      if (FRAME_TOTAL_COLS (f) != FrameCols (tty))
+		FrameCols (tty) = FRAME_TOTAL_COLS (f);
 	      if (FRAME_TOTAL_LINES (f) != FrameRows (tty))
 		FrameRows (tty) = FRAME_TOTAL_LINES (f);
 	    }

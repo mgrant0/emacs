@@ -842,7 +842,7 @@ tty_write_glyphs_with_face (struct frame *f, struct glyph *string,
 
   if (AutoWrap (tty)
       && curY (tty) + 1 == FRAME_TOTAL_LINES (f)
-      && (curX (tty) + len) == FRAME_COLS (f))
+      && (curX (tty) + len) == FRAME_TOTAL_COLS (f))
     len --;
   if (len <= 0)
     return;
