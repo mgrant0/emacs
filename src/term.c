@@ -4471,14 +4471,13 @@ tty_set_vertical_scroll_bars (struct frame *f, Lisp_Object arg)
       && FRAME_TERMINAL (f)->set_scroll_bar_default_width_hook)
     (*FRAME_TERMINAL (f)->set_scroll_bar_default_width_hook) (f);
 
-  /* Trigger a full redisplay.  adjust_frame_size recalculates window
-     text areas to account for the newly-reserved scroll bar columns.
-     When only the scroll bar side changes (e.g. right→left) all frame
-     dimensions stay identical and adjust_frame_size returns early
-     without calling adjust_frame_glyphs.  Call it explicitly so that
-     the glyph matrix TEXT_AREA pointers (shifted by sbl/sbr) are
-     always updated to match the new scroll bar layout.  */
-  adjust_frame_size (f, -1, -1, 3, 0, Qvertical_scroll_bars);
+  /* Trigger a full redisplay.  TTY scroll bars occupy terminal
+     columns; they cannot increase the physical width of the terminal.
+     Preserve FrameCols as the total width and resize the text area to
+     leave room for any enabled scroll bar columns.  */
+  int text_cols = max (0, FrameCols (FRAME_TTY (f)) - FRAME_SCROLL_BAR_COLS (f));
+  adjust_frame_size (f, text_cols * FRAME_COLUMN_WIDTH (f), -1,
+		     3, 0, Qvertical_scroll_bars);
   adjust_frame_glyphs (f);
   SET_FRAME_GARBAGED (f);
 }
