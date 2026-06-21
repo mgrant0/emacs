@@ -4466,8 +4466,11 @@ tty_set_vertical_scroll_bars (struct frame *f, Lisp_Object arg)
 
   FRAME_VERTICAL_SCROLL_BAR_TYPE (f) = new_type;
 
-  /* Set the scroll bar width if enabling scroll bars.  */
+  /* Set the scroll bar width if enabling scroll bars and no width has
+     been configured already.  Changing sides must preserve a user-set
+     `scroll-bar-width'.  */
   if (new_type != vertical_scroll_bar_none
+      && FRAME_CONFIG_SCROLL_BAR_WIDTH (f) <= 0
       && FRAME_TERMINAL (f)->set_scroll_bar_default_width_hook)
     (*FRAME_TERMINAL (f)->set_scroll_bar_default_width_hook) (f);
 

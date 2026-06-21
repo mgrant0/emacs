@@ -4301,6 +4301,30 @@ list, but are otherwise ignored.  */)
 	    update_face_from_frame_parameter (f, prop, val);
 	  else if (EQ (prop, Qvertical_scroll_bars))
 	    tty_set_vertical_scroll_bars (f, val);
+	  else if (EQ (prop, Qscroll_bar_width))
+	    {
+	      int unit = FRAME_COLUMN_WIDTH (f);
+
+	      if (RANGED_FIXNUMP (1, val, INT_MAX))
+		{
+		  FRAME_CONFIG_SCROLL_BAR_WIDTH (f) = XFIXNAT (val);
+		  FRAME_CONFIG_SCROLL_BAR_COLS (f)
+		    = (XFIXNAT (val) + unit - 1) / unit;
+		}
+	      else if (FRAME_TERMINAL (f)->set_scroll_bar_default_width_hook)
+		FRAME_TERMINAL (f)->set_scroll_bar_default_width_hook (f);
+
+	      if (FRAME_HAS_VERTICAL_SCROLL_BARS (f))
+		{
+		  int text_cols
+		    = max (0, FrameCols (FRAME_TTY (f)) - FRAME_SCROLL_BAR_COLS (f));
+		  adjust_frame_size (f, text_cols * unit, -1,
+				     3, 0, Qscroll_bar_width);
+		  adjust_frame_glyphs (f);
+		}
+
+	      SET_FRAME_GARBAGED (f);
+	    }
 	}
 
       if (is_tty_child_frame (f))
