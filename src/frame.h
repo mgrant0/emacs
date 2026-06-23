@@ -1495,6 +1495,7 @@ window_system_available (struct frame *f)
 
 extern WINDOW_SYSTEM_RETURN void check_window_system (struct frame *);
 struct frame *decode_tty_frame (Lisp_Object frame);
+extern void tty_adjust_frame_for_scroll_bars (struct frame *, Lisp_Object);
 extern void tty_set_vertical_scroll_bars (struct frame *, Lisp_Object);
 extern void frame_make_pointer_invisible (struct frame *);
 extern void frame_make_pointer_visible (struct frame *);

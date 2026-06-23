@@ -4440,6 +4440,20 @@ tty_set_scroll_bar_default_width (struct frame *f)
   FRAME_CONFIG_SCROLL_BAR_COLS (f) = 1;
 }
 
+void
+tty_adjust_frame_for_scroll_bars (struct frame *f, Lisp_Object parameter)
+{
+  int text_cols = max (0, FrameCols (FRAME_TTY (f)) - FRAME_SCROLL_BAR_COLS (f));
+
+  adjust_frame_size (f, text_cols * FRAME_COLUMN_WIDTH (f), -1,
+		     3, 0, parameter);
+  adjust_frame_glyphs (f);
+  SET_FRAME_GARBAGED (f);
+
+  XWINDOW (FRAME_SELECTED_WINDOW (f))->cursor.hpos = 0;
+  XWINDOW (FRAME_SELECTED_WINDOW (f))->cursor.x = 0;
+}
+
 /* Called from frame.c when the vertical-scroll-bars parameter is changed
    for a TTY frame.  */
 void
@@ -4482,15 +4496,11 @@ tty_set_vertical_scroll_bars (struct frame *f, Lisp_Object arg)
 	(*FRAME_TERMINAL (f)->set_scroll_bar_default_width_hook) (f);
     }
 
-  /* Trigger a full redisplay.  TTY scroll bars occupy terminal
-     columns; they cannot increase the physical width of the terminal.
-     Preserve FrameCols as the total width and resize the text area to
-     leave room for any enabled scroll bar columns.  */
-  int text_cols = max (0, FrameCols (FRAME_TTY (f)) - FRAME_SCROLL_BAR_COLS (f));
-  adjust_frame_size (f, text_cols * FRAME_COLUMN_WIDTH (f), -1,
-		     3, 0, Qvertical_scroll_bars);
-  adjust_frame_glyphs (f);
-  SET_FRAME_GARBAGED (f);
+  /* TTY scroll bars occupy terminal columns; they cannot increase the
+     physical width of the terminal.  Preserve FrameCols as the total
+     width and resize the text area to leave room for any enabled scroll
+     bar columns.  */
+  tty_adjust_frame_for_scroll_bars (f, Qvertical_scroll_bars);
 }
 
 struct terminal *
