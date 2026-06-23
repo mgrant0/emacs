@@ -4315,15 +4315,9 @@ list, but are otherwise ignored.  */)
 		FRAME_TERMINAL (f)->set_scroll_bar_default_width_hook (f);
 
 	      if (FRAME_HAS_VERTICAL_SCROLL_BARS (f))
-		{
-		  int text_cols
-		    = max (0, FrameCols (FRAME_TTY (f)) - FRAME_SCROLL_BAR_COLS (f));
-		  adjust_frame_size (f, text_cols * unit, -1,
-				     3, 0, Qscroll_bar_width);
-		  adjust_frame_glyphs (f);
-		}
-
-	      SET_FRAME_GARBAGED (f);
+		tty_adjust_frame_for_scroll_bars (f, Qscroll_bar_width);
+	      else
+		SET_FRAME_GARBAGED (f);
 	    }
 	}
 
