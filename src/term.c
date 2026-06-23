@@ -4466,13 +4466,21 @@ tty_set_vertical_scroll_bars (struct frame *f, Lisp_Object arg)
 
   FRAME_VERTICAL_SCROLL_BAR_TYPE (f) = new_type;
 
-  /* Set the scroll bar width if enabling scroll bars and no width has
-     been configured already.  Changing sides must preserve a user-set
-     `scroll-bar-width'.  */
-  if (new_type != vertical_scroll_bar_none
-      && FRAME_CONFIG_SCROLL_BAR_WIDTH (f) <= 0
-      && FRAME_TERMINAL (f)->set_scroll_bar_default_width_hook)
-    (*FRAME_TERMINAL (f)->set_scroll_bar_default_width_hook) (f);
+  if (new_type != vertical_scroll_bar_none)
+    {
+      Lisp_Object width = get_frame_param (f, Qscroll_bar_width);
+      int unit = FRAME_COLUMN_WIDTH (f);
+
+      /* Use an explicitly set `scroll-bar-width' when changing sides;
+	 otherwise fall back to the TTY default.  */
+      if (RANGED_FIXNUMP (1, width, INT_MAX))
+	{
+	  FRAME_CONFIG_SCROLL_BAR_WIDTH (f) = XFIXNAT (width);
+	  FRAME_CONFIG_SCROLL_BAR_COLS (f) = (XFIXNAT (width) + unit - 1) / unit;
+	}
+      else if (FRAME_TERMINAL (f)->set_scroll_bar_default_width_hook)
+	(*FRAME_TERMINAL (f)->set_scroll_bar_default_width_hook) (f);
+    }
 
   /* Trigger a full redisplay.  TTY scroll bars occupy terminal
      columns; they cannot increase the physical width of the terminal.
