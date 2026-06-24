@@ -832,6 +832,10 @@ struct glyph_matrix
      the matrix was last adjusted.  */
   int left_margin_glyphs, right_margin_glyphs;
 
+  /* Number of glyphs reserved for TTY scroll bars when the matrix was
+     last adjusted.  */
+  int left_scroll_bar_glyphs, right_scroll_bar_glyphs;
+
   /* Flag indicating that scrolling should not be tried in
      update_window.  This flag is set by functions like try_window_id
      which do their own scrolling.  */

@@ -335,6 +335,21 @@ verify_row_hash (struct glyph_row *row)
   return row->hash == row_hash (row);
 }
 
+static void
+window_tty_scroll_bar_cols (struct window *w, int *left, int *right)
+{
+  *left = 0;
+  *right = 0;
+
+  if (w && !FRAME_WINDOW_P (XFRAME (w->frame)) && !MINI_WINDOW_P (w))
+    {
+      if (WINDOW_HAS_VERTICAL_SCROLL_BAR_ON_LEFT (w))
+	*left = WINDOW_SCROLL_BAR_COLS (w);
+      else if (WINDOW_HAS_VERTICAL_SCROLL_BAR_ON_RIGHT (w))
+	*right = WINDOW_SCROLL_BAR_COLS (w);
+    }
+}
+
 /* Adjust glyph matrix MATRIX on window W or on a frame to changed
    window sizes.
 
@@ -368,6 +383,7 @@ adjust_glyph_matrix (struct window *w, struct glyph_matrix *matrix, int x, int y
   bool header_line_changed_p = 0;
   bool header_line_p = 0;
   int left = -1, right = -1;
+  int sbl = 0, sbr = 0;
   int window_width = -1, window_height = -1;
 
   /* See if W had a header line that has disappeared now, or vice versa.
@@ -381,6 +397,8 @@ adjust_glyph_matrix (struct window *w, struct glyph_matrix *matrix, int x, int y
 
       header_line_p = window_wants_header_line (w);
       header_line_changed_p = header_line_p != matrix->header_line_p;
+
+      window_tty_scroll_bar_cols (w, &sbl, &sbr);
     }
   matrix->tab_line_p = tab_line_p;
   matrix->header_line_p = header_line_p;
@@ -396,7 +414,9 @@ adjust_glyph_matrix (struct window *w, struct glyph_matrix *matrix, int x, int y
       right = margin_glyphs_to_reserve (w, dim.width, w->right_margin_cols);
       eassert (left >= 0 && right >= 0);
       marginal_areas_changed_p = (left != matrix->left_margin_glyphs
-				  || right != matrix->right_margin_glyphs);
+				  || right != matrix->right_margin_glyphs
+				  || sbl != matrix->left_scroll_bar_glyphs
+				  || sbr != matrix->right_scroll_bar_glyphs);
 
       if (!marginal_areas_changed_p
 	  && !XFRAME (w->frame)->fonts_changed
@@ -473,15 +493,6 @@ adjust_glyph_matrix (struct window *w, struct glyph_matrix *matrix, int x, int y
 		 (left scroll bar) or glyphs[LAST_AREA][0..sbr-1] (right).
 		 TEXT_AREA and RIGHT_MARGIN_AREA are shifted accordingly so
 		 the text iterator doesn't overwrite scroll bar columns.  */
-	      int sbl = 0, sbr = 0;
-	      if (w && !FRAME_WINDOW_P (XFRAME (w->frame))
-		  && !MINI_WINDOW_P (w))
-		{
-		  sbl = (WINDOW_HAS_VERTICAL_SCROLL_BAR_ON_LEFT (w)
-			 ? WINDOW_SCROLL_BAR_COLS (w) : 0);
-		  sbr = (WINDOW_HAS_VERTICAL_SCROLL_BAR_ON_RIGHT (w)
-			 ? WINDOW_SCROLL_BAR_COLS (w) : 0);
-		}
 	      row->glyphs[TEXT_AREA]
 		= row->glyphs[LEFT_MARGIN_AREA] + sbl + left;
 	      row->glyphs[RIGHT_MARGIN_AREA]
@@ -501,6 +512,8 @@ adjust_glyph_matrix (struct window *w, struct glyph_matrix *matrix, int x, int y
 
       matrix->left_margin_glyphs = left;
       matrix->right_margin_glyphs = right;
+      matrix->left_scroll_bar_glyphs = sbl;
+      matrix->right_scroll_bar_glyphs = sbr;
     }
   else
     {
@@ -562,6 +575,8 @@ adjust_glyph_matrix (struct window *w, struct glyph_matrix *matrix, int x, int y
       eassert (left >= 0 && right >= 0);
       matrix->left_margin_glyphs = left;
       matrix->right_margin_glyphs = right;
+      matrix->left_scroll_bar_glyphs = sbl;
+      matrix->right_scroll_bar_glyphs = sbr;
 
       /* If we are resizing a window, make sure the previous mode-line
 	 row of the window's current matrix is no longer marked as such.  */
@@ -1708,16 +1723,21 @@ allocate_matrices_for_frame_redisplay (Lisp_Object window, int x, int y,
 	  dim.height = required_matrix_height (w);
 
 	  /* Will matrix be re-allocated?  */
+	  int left = margin_glyphs_to_reserve (w, dim.width,
+					       w->left_margin_cols);
+	  int right = margin_glyphs_to_reserve (w, dim.width,
+						w->right_margin_cols);
+	  int sbl, sbr;
+	  window_tty_scroll_bar_cols (w, &sbl, &sbr);
+
 	  if (x != w->desired_matrix->matrix_x
 	      || y != w->desired_matrix->matrix_y
 	      || dim.width != w->desired_matrix->matrix_w
 	      || dim.height != w->desired_matrix->matrix_h
-	      || (margin_glyphs_to_reserve (w, dim.width,
-					    w->left_margin_cols)
-		  != w->desired_matrix->left_margin_glyphs)
-	      || (margin_glyphs_to_reserve (w, dim.width,
-					    w->right_margin_cols)
-		  != w->desired_matrix->right_margin_glyphs))
+	      || left != w->desired_matrix->left_margin_glyphs
+	      || right != w->desired_matrix->right_margin_glyphs
+	      || sbl != w->desired_matrix->left_scroll_bar_glyphs
+	      || sbr != w->desired_matrix->right_scroll_bar_glyphs)
 	    *window_change_flags |= CHANGED_LEAF_MATRIX;
 
 	  /* Actually change matrices, if allowed.  Do not consider
@@ -2109,24 +2129,6 @@ adjust_frame_glyphs_for_frame_redisplay (struct frame *f)
   /* Enlarge pools as necessary.  */
   pool_changed_p = realloc_glyph_pool (f->desired_pool, matrix_dim);
   realloc_glyph_pool (f->current_pool, matrix_dim);
-
-  /* When the TTY scroll bar type changes, sbl/sbr (computed in
-     adjust_glyph_matrix) change too, so the TEXT_AREA glyph pointer
-     offsets within each pool row must be updated.  Because neither the
-     pool size nor the window sizes change in that case, the normal
-     pool_changed_p / window_change_flags detection misses it.
-     Use config_scroll_bar_height (unused by TTY frames) to track the
-     last-seen scroll bar type and force re-adjustment only on change.  */
-  if (!FRAME_WINDOW_P (f))
-    {
-      enum vertical_scroll_bar_type cur_sb
-	= FRAME_VERTICAL_SCROLL_BAR_TYPE (f);
-      if ((int) cur_sb != f->config_scroll_bar_height)
-	{
-	  f->config_scroll_bar_height = (int) cur_sb;
-	  pool_changed_p = true;
-	}
-    }
 
   /* Set up glyph pointers within window matrices.  Do this only if
      absolutely necessary since it requires a frame redraw.  */
@@ -4129,8 +4131,8 @@ tty_apply_scroll_bar_glyphs (struct frame *f)
   tty_apply_scroll_bar_glyphs_for_window (f, XWINDOW (f->root_window));
 }
 
-DEFUN ("tty-scroll-bar-thumb-rows", Ftty_scroll_bar_thumb_rows,
-       Stty_scroll_bar_thumb_rows, 1, 1, 0,
+DEFUN ("tty-scroll-bar--thumb-rows", Ftty_scroll_bar__thumb_rows,
+       Stty_scroll_bar__thumb_rows, 1, 1, 0,
   doc: /* Return scroll-bar thumb row bounds for WINDOW as (START . END).
 START and END are zero-based row numbers within the scroll bar; the
 thumb occupies rows START through END-1 (exclusive).
@@ -4193,6 +4195,45 @@ geometry from the current buffer/window state instead.  */)
   tty_compute_scroll_bar_thumb (portion, whole, position, sb_rows,
 				&thumb_start, &thumb_end);
   return Fcons (make_fixnum (thumb_start), make_fixnum (thumb_end));
+}
+
+DEFUN ("tty-scroll-bar--part", Ftty_scroll_bar__part,
+       Stty_scroll_bar__part, 2, 2, 0,
+  doc: /* Return the TTY scroll-bar part at frame row Y in WINDOW.
+The return value is one of `above-handle', `handle', or `below-handle'.
+Y is a frame-relative row number.  */)
+  (Lisp_Object window, Lisp_Object y)
+{
+  struct window *w = decode_live_window (window);
+  CHECK_FIXNUM (y);
+
+  int nrows = WINDOW_TOTAL_LINES (w);
+  if (window_wants_mode_line (w))
+    nrows--;
+  int top_skip = 0;
+  if (window_wants_tab_line (w))
+    top_skip++;
+  if (window_wants_header_line (w))
+    top_skip++;
+  int sb_rows = nrows - top_skip;
+  if (sb_rows <= 0)
+    return Qhandle;
+
+  int sb_row = XFIXNUM (y) - WINDOW_TOP_EDGE_LINE (w) - top_skip;
+  sb_row = max (0, min (sb_row, sb_rows - 1));
+
+  Lisp_Object geom = Ftty_scroll_bar__thumb_rows (window);
+  if (CONSP (geom))
+    {
+      int thumb_start = XFIXNUM (XCAR (geom));
+      int thumb_end = XFIXNUM (XCDR (geom));
+      if (sb_row < thumb_start)
+	return Qabove_handle;
+      if (sb_row >= thumb_end)
+	return Qbelow_handle;
+    }
+
+  return Qhandle;
 }
 
 static void
@@ -7769,7 +7810,8 @@ syms_of_display (void)
   defsubr (&Sinternal_show_cursor);
   defsubr (&Sinternal_show_cursor_p);
   defsubr (&Sframe__z_order_lessp);
-  defsubr (&Stty_scroll_bar_thumb_rows);
+  defsubr (&Stty_scroll_bar__thumb_rows);
+  defsubr (&Stty_scroll_bar__part);
 
 #ifdef GLYPH_DEBUG
   defsubr (&Sdump_redisplay_history);

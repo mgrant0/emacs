@@ -314,16 +314,21 @@ If you click outside the slider, the window scrolls to bring the slider there."
 (defun tty-scroll-bar--thumb-geometry (window)
   "Return (START . END) thumb geometry for WINDOW's TTY scroll bar.
 START and END are 0-indexed row numbers; the thumb occupies rows
-\[START, END) (exclusive END).  Delegates to `tty-scroll-bar-thumb-rows',
+\[START, END) (exclusive END).  Delegates to `tty-scroll-bar--thumb-rows',
 which uses the same formula as the C renderer, so the result always
 agrees with what is drawn on screen."
-  (or (tty-scroll-bar-thumb-rows window)
+  (or (tty-scroll-bar--thumb-rows window)
       ;; Fallback: no scroll-bar data yet; treat the full bar as the thumb.
       (cons 0 (window-body-height window))))
 
 (defun tty-scroll-bar--thumb-start (window)
   "Return the 0-indexed thumb-start row for WINDOW's TTY scroll bar."
   (car (tty-scroll-bar--thumb-geometry window)))
+
+(defun tty-scroll-bar--event-part (event)
+  "Return the scroll bar part recorded in EVENT."
+  (pcase (event-start event)
+    (`(,_ ,_ ,_ ,_ ,part . ,_) part)))
 
 (defun tty-scroll-bar-drag (event)
   "Scroll a TTY scroll bar window live as the mouse is dragged.
@@ -344,7 +349,7 @@ rather than jumping to align its top edge with the cursor."
          (window       (posn-window start-pos))
          (top-skip     (+ (if (> (window-header-line-height window) 0) 1 0)
                           (if (> (window-tab-line-height window) 0) 1 0)))
-         (click-sb-row (car (nth 2 start-pos)))
+         (click-sb-row (car (posn-x-y start-pos)))
          (grab-offset  (max 0 (- click-sb-row
                                  (tty-scroll-bar--thumb-start window)))))
     (track-mouse
@@ -356,7 +361,7 @@ rather than jumping to align its top edge with the cursor."
               ;; Mouse moved within the scroll bar: extract sb-row from
               ;; the event's (PORTION . WHOLE) field directly.
               (let* ((posn   (event-start ev))
-                     (ratio  (nth 2 posn))
+                     (ratio  (posn-x-y posn))
                      (win-ht (window-body-height window))
                      (sb-row (max 0 (min (1- win-ht)
                                          (- (car ratio) grab-offset)))))
@@ -396,7 +401,7 @@ When clicked on the thumb handle, initiate live drag scrolling via
 nothing so that the subsequent button-up event fires
 `scroll-bar-toolkit-scroll' to page up or down."
   (interactive "e")
-  (when (eq (nth 4 (event-start event)) 'handle)
+  (when (eq (tty-scroll-bar--event-part event) 'handle)
     (tty-scroll-bar-drag event)))
 
 ;; Scroll the window to the proper position for EVENT.

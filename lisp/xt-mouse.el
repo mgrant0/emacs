@@ -131,25 +131,6 @@ https://invisible-island.net/xterm/ctlseqs/ctlseqs.html)."
                 (xterm-mouse--handle-mouse-movement)
 		(vector (list 'mouse-movement ev-data))))))))))))
 
-(defun xterm-mouse--tty-scroll-bar-part (window y)
-  "Return the scroll bar part clicked at terminal row Y for WINDOW.
-Returns one of the symbols `above-handle', `handle', or `below-handle'.
-Uses `tty-scroll-bar-thumb-rows' (the authoritative C formula) so the
-classifier always agrees with what the renderer drew on screen."
-  (let* ((win-top (window-top-line window))
-         (win-ht  (window-body-height window))
-         (top-skip (+ (if (> (window-header-line-height window) 0) 1 0)
-                      (if (> (window-tab-line-height window) 0) 1 0)))
-         (sb-row  (max 0 (min (1- win-ht) (- y win-top top-skip))))
-         (geom    (tty-scroll-bar-thumb-rows window)))
-    (if geom
-        (cond
-         ((< sb-row (car geom))  'above-handle)
-         ((>= sb-row (cdr geom)) 'below-handle)
-         (t                      'handle))
-      ;; No scroll-bar data yet; treat the whole bar as the handle.
-      'handle)))
-
 (defun xterm-mouse--handle-mouse-movement ()
   "Handle mouse motion that was just generated for XTerm mouse."
   (when-let* ((frame (terminal-parameter nil 'xterm-mouse-frame)))
@@ -350,7 +331,7 @@ which is the \"1006\" extension implemented in Xterm >= 277."
                        (top-skip (+ (if (> (window-header-line-height w) 0) 1 0)
                                     (if (> (window-tab-line-height w) 0) 1 0)))
                        (sb-row  (max 0 (min (1- win-ht) (- y win-top top-skip))))
-                       (part    (xterm-mouse--tty-scroll-bar-part w y)))
+                       (part    (tty-scroll-bar--part w y)))
                   (list w 'vertical-scroll-bar
                         (cons sb-row win-ht) timestamp part)))
                ;; TTY vertical border `|': generate a vertical-line posn so
