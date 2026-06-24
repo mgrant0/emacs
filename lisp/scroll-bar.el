@@ -595,7 +595,7 @@ EVENT should be a scroll bar click."
 		       'scroll-bar-toolkit-scroll)
        (global-set-key [horizontal-scroll-bar mouse-1]
 		       'scroll-bar-toolkit-horizontal-scroll)
-       ;; Also bind the TTY live-drag key so that `src/emacs -nw' in a
+       ;; Also bind the TTY live-drag key so that `emacs -nw' in a
        ;; toolkit build uses the same drag handler as non-toolkit builds.
        ;; In graphical frames the toolkit delivers drags as mouse-1
        ;; (not down-mouse-1), so this binding does not conflict.
