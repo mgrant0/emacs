@@ -5113,7 +5113,8 @@ Normally the frame parameter @code{vertical-scroll-bars} controls
 whether the windows in the frame have vertical scroll bars, and whether
 they are on the left or right.  The frame parameter
 @code{scroll-bar-width} specifies how wide they are (@code{nil} meaning
-the default).
+the default).  On text terminals, vertical scroll bars occupy character
+columns instead of pixels.
 
    The frame parameter @code{horizontal-scroll-bars} controls whether
 the windows in the frame have horizontal scroll bars.  The frame
@@ -5139,7 +5140,7 @@ bar.)  @var{horizontal-type} is either @code{bottom} or @code{nil}
 
 @defun frame-scroll-bar-width &optional frame
 This function returns the width of vertical scroll bars of @var{frame}
-in pixels.
+in pixels, or in character columns on text terminal frames.
 @end defun
 
 @defun frame-scroll-bar-height &optional frame
@@ -5155,8 +5156,9 @@ This function sets the width and/or height and the types of scroll bars
 for window @var{window}.  If @var{window} is @code{nil}, the selected
 window is used.
 
-@var{width} specifies the width of the vertical scroll bar in pixels
-(@code{nil} means use the width specified for the frame).
+@var{width} specifies the width of the vertical scroll bar in pixels, or
+in character columns on text terminal frames (@code{nil} means use the
+width specified for the frame).
 @var{vertical-type} specifies whether to have a vertical scroll bar and,
 if so, where.  The possible values are @code{left}, @code{right},
 @code{t}, which means to use the frame's default, and @code{nil} for no

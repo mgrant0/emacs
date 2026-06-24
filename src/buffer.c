@@ -5546,7 +5546,9 @@ in a window.  To make the change take effect, call `set-window-buffer'.  */);
 
   DEFVAR_PER_BUFFER ("scroll-bar-width", scroll_bar_width,
 		     Qintegerp,
-		     doc: /* Width of this buffer's vertical scroll bars in pixels.
+		     doc: /* Width of this buffer's vertical scroll bars.
+The value is in pixels on graphical frames and in character columns on
+text terminal frames.
 A value of nil means to use the scroll bar width from the window's frame.  */);
 
   DEFVAR_PER_BUFFER ("scroll-bar-height", scroll_bar_height,

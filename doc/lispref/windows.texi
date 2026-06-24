@@ -6847,7 +6847,7 @@ If @var{frame} is omitted or @code{nil}, it defaults to the selected
 frame.
 @end defun
 
-@defun coordinates-in-window-p coordinates window
+@defun coordinates-in-window-p coordinates window &optional report-scroll-bars
 This function checks whether a window @var{window} occupies the frame
 relative coordinates @var{coordinates}, and if so, which part of the
 window that is.  @var{window} should be a live window.
@@ -6889,6 +6889,14 @@ The coordinates are in the vertical line between @var{window} and its
 neighbor to the right.  This value occurs only if the window doesn't
 have a scroll bar; positions in a scroll bar are considered outside the
 window for these purposes.
+
+@item vertical-scroll-bar
+@itemx horizontal-scroll-bar
+The coordinates are in the vertical or horizontal scroll bar of
+@var{window}.  These values are returned only if
+@var{report-scroll-bars} is non-@code{nil}; otherwise, positions in
+scroll bars are considered outside the window for compatibility with
+older Emacs versions.
 
 @item left-fringe
 @itemx right-fringe

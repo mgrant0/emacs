@@ -1271,7 +1271,9 @@ WINDOW must be a live window and defaults to the selected one.  */)
 
 DEFUN ("window-scroll-bar-width", Fwindow_scroll_bar_width,
        Swindow_scroll_bar_width, 0, 1, 0,
-       doc: /* Return the width in pixels of WINDOW's vertical scrollbar.
+       doc: /* Return the width of WINDOW's vertical scrollbar.
+The value is in pixels on graphical frames and in character columns on
+text terminal frames.
 WINDOW must be a live window and defaults to the selected one.  */)
   (Lisp_Object window)
 {
@@ -8847,8 +8849,9 @@ DEFUN ("set-window-scroll-bars", Fset_window_scroll_bars,
        doc: /* Set width and type of scroll bars of specified WINDOW.
 WINDOW must specify a live window and defaults to the selected one.
 
-Second argument WIDTH specifies the pixel width for the vertical scroll
-bar.  If WIDTH is nil, use the scroll bar width of WINDOW's frame.
+Second argument WIDTH specifies the width for the vertical scroll bar,
+in pixels on graphical frames and in character columns on text terminal
+frames.  If WIDTH is nil, use the scroll bar width of WINDOW's frame.
 Third argument VERTICAL-TYPE specifies the type of the vertical scroll
 bar: left, right, nil or t where nil means to not display a vertical
 scroll bar on WINDOW and t means to use WINDOW frame's vertical scroll
@@ -8889,8 +8892,9 @@ DEFUN ("window-scroll-bars", Fwindow_scroll_bars, Swindow_scroll_bars,
 WINDOW must be a live window and defaults to the selected one.
 
 Value is a list of the form (WIDTH COLUMNS VERTICAL-TYPE HEIGHT LINES
-HORIZONTAL-TYPE PERSISTENT).  WIDTH reports the pixel width of the
-vertical scroll bar; COLUMNS is the equivalent number of columns.
+HORIZONTAL-TYPE PERSISTENT).  WIDTH reports the width of the vertical
+scroll bar, in pixels on graphical frames and in character columns on
+text terminal frames; COLUMNS is the equivalent number of columns.
 Similarly, HEIGHT and LINES are the height of the horizontal scroll
 bar in pixels and the equivalent number of lines.  VERTICAL-TYPE
 reports the type of the vertical scroll bar, either left, right, nil,

@@ -1779,13 +1779,14 @@ This is the symbol @code{vertical-scroll-bar}.
 
 @item @var{portion}
 The number of pixels from the top of the scroll bar to the click
-position.  On some toolkits, including GTK+, Emacs cannot extract this
-data, so the value is always @code{0}.
+position, or the number of character rows on text terminals.  On some
+toolkits, including GTK+, Emacs cannot extract this data, so the value
+is always @code{0}.
 
 @item @var{whole}
-The total length, in pixels, of the scroll bar.  On some toolkits,
-including GTK+, Emacs cannot extract this data, so the value is always
-@code{0}.
+The total length, in pixels, of the scroll bar, or in character rows on
+text terminals.  On some toolkits, including GTK+, Emacs cannot extract
+this data, so the value is always @code{0}.
 
 @item @var{timestamp}
 The time at which the event occurred, in milliseconds.  On some

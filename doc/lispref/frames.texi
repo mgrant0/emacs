@@ -2043,8 +2043,9 @@ Whether the frame has scroll bars for horizontal scrolling (@code{t} and
 
 @vindex scroll-bar-width@r{, a frame parameter}
 @item scroll-bar-width
-The width of vertical scroll bars, in pixels, or @code{nil} meaning to
-use the default width.
+The width of vertical scroll bars, in pixels on graphical frames and in
+character columns on text terminal frames, or @code{nil} meaning to use
+the default width.
 
 @vindex scroll-bar-height@r{, a frame parameter}
 @item scroll-bar-height

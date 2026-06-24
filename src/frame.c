@@ -4505,7 +4505,9 @@ DEFUN ("frame-text-height", Fframe_text_height, Sframe_text_height, 0, 1, 0,
 }
 
 DEFUN ("frame-scroll-bar-width", Fscroll_bar_width, Sscroll_bar_width, 0, 1, 0,
-       doc: /* Return scroll bar width of FRAME in pixels.  */)
+       doc: /* Return scroll bar width of FRAME.
+The value is in pixels on graphical frames and in character columns on
+text terminal frames.  */)
   (Lisp_Object frame)
 {
   return make_fixnum (FRAME_SCROLL_BAR_AREA_WIDTH (decode_any_frame (frame)));

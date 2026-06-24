@@ -30,6 +30,13 @@ applies, and please also update docstrings as needed.
 
 * Changes in Emacs 32.1
 
++++
+** Text terminals can display vertical scroll bars.
+When Scroll Bar mode is enabled, Emacs can display vertical scroll bars
+on text terminals as well as graphical terminals.  On text terminals,
+the 'scroll-bar-width' frame parameter is interpreted in character
+columns instead of pixels.
+
 ---
 ** Emacs no longer kills child processes after EPIPE.
 Previously, Emacs would immediately kill a child process and set its
@@ -113,6 +120,13 @@ To install the grammars, use 'M-x markdown-ts-mode-install-parsers'.
 
 
 * Lisp Changes in Emacs 32.1
+
++++
+** 'coordinates-in-window-p' can report scroll-bar coordinates.
+The new optional argument REPORT-SCROLL-BARS tells
+'coordinates-in-window-p' to return 'vertical-scroll-bar' or
+'horizontal-scroll-bar' when the coordinates are in a scroll bar.  The
+default behavior is unchanged: scroll-bar coordinates return nil.
 
 +++
 ** The new function 'markers-in' returns the set of markers in a region.
