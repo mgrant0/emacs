@@ -64,9 +64,6 @@ static int been_here = -1;
 
 static void tty_set_vertical_scroll_bar (struct window *w,
 					 int portion, int whole, int position);
-static void tty_condemn_scroll_bars (struct frame *f);
-static void tty_redeem_scroll_bar (struct window *w);
-static void tty_judge_scroll_bars (struct frame *f);
 static void tty_set_scroll_bar_default_width (struct frame *f);
 
 #ifndef HAVE_ANDROID
@@ -4343,14 +4340,10 @@ set_tty_hooks (struct terminal *terminal)
 
   terminal->frame_raise_lower_hook = tty_raise_lower_frame;
 
-  /* Scroll Bar Hooks */
   terminal->set_vertical_scroll_bar_hook = tty_set_vertical_scroll_bar;
-  terminal->condemn_scroll_bars_hook = tty_condemn_scroll_bars;
-  terminal->redeem_scroll_bar_hook = tty_redeem_scroll_bar;
-  terminal->judge_scroll_bars_hook = tty_judge_scroll_bars;
   terminal->set_scroll_bar_default_width_hook = tty_set_scroll_bar_default_width;
 
-   /* Other hooks are NULL by default.  */
+  /* Other hooks are NULL by default.  */
 }
 
 /* If FD is the controlling terminal, drop it.  */
@@ -4414,21 +4407,6 @@ tty_set_vertical_scroll_bar (struct window *w,
   ASET (w->vertical_scroll_bar, 0, make_fixnum (portion));
   ASET (w->vertical_scroll_bar, 1, make_fixnum (whole));
   ASET (w->vertical_scroll_bar, 2, make_fixnum (position));
-}
-
-static void
-tty_condemn_scroll_bars (struct frame *f)
-{
-}
-
-static void
-tty_redeem_scroll_bar (struct window *w)
-{
-}
-
-static void
-tty_judge_scroll_bars (struct frame *f)
-{
 }
 
 /* Set scroll bar default width for TTY frames: 1 character column.  */

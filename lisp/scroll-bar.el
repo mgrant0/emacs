@@ -330,6 +330,19 @@ agrees with what is drawn on screen."
   (pcase (event-start event)
     (`(,_ ,_ ,_ ,_ ,part . ,_) part)))
 
+(defun tty-scroll-bar--set-window-start (window sb-row win-ht)
+  "Set WINDOW start from zero-based scroll bar row SB-ROW.
+WIN-HT is the usable scroll bar height in rows."
+  (when (> win-ht 0)
+    (with-current-buffer (window-buffer window)
+      ;; Divide by (1- win-ht) so the bottom scroll bar row maps to
+      ;; point-max, putting the last buffer line at the top of WINDOW.
+      (goto-char (+ (point-min)
+                    (/ (* sb-row (- (point-max) (point-min)))
+                       (max 1 (1- win-ht)))))
+      (vertical-motion 0 window)
+      (set-window-start window (point)))))
+
 (defun tty-scroll-bar-drag (event)
   "Scroll a TTY scroll bar window live as the mouse is dragged.
 EVENT is the down-mouse-1 event on the scroll bar handle.
@@ -365,17 +378,7 @@ rather than jumping to align its top edge with the cursor."
                      (win-ht (window-body-height window))
                      (sb-row (max 0 (min (1- win-ht)
                                          (- (car ratio) grab-offset)))))
-                (when (> win-ht 0)
-                  (with-current-buffer (window-buffer window)
-                    ;; Divide by (1- win-ht) so sb-row = win-ht-1 (the
-                    ;; maximum, when the thumb is dragged to the very
-                    ;; bottom) maps to point-max, putting the last buffer
-                    ;; line at the top of the window.
-                    (goto-char (+ (point-min)
-                                  (/ (* sb-row (- (point-max) (point-min)))
-                                     (max 1 (1- win-ht)))))
-                    (vertical-motion 0 window)
-                    (set-window-start window (point))))))
+                (tty-scroll-bar--set-window-start window sb-row win-ht)))
              ((mouse-movement-p ev)
               ;; Mouse moved outside the scroll bar (e.g. into the text
               ;; area): use the y coordinate stored by xterm-mouse.
@@ -384,13 +387,7 @@ rather than jumping to align its top edge with the cursor."
                      (win-top (window-top-line window))
                      (sb-row  (max 0 (min (1- win-ht)
                                           (- (- y win-top top-skip) grab-offset)))))
-                (when (> win-ht 0)
-                  (with-current-buffer (window-buffer window)
-                    (goto-char (+ (point-min)
-                                  (/ (* sb-row (- (point-max) (point-min)))
-                                     (max 1 (1- win-ht)))))
-                    (vertical-motion 0 window)
-                    (set-window-start window (point))))))
+                (tty-scroll-bar--set-window-start window sb-row win-ht)))
              (t
               (setq done t)))))))))
 

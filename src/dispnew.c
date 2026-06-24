@@ -4006,6 +4006,24 @@ tty_compute_scroll_bar_thumb (int portion, int whole, int position,
   *thumb_end_out   = thumb_end;
 }
 
+static int
+tty_scroll_bar_rows (struct window *w, int *top_skip_out)
+{
+  int top_skip = 0;
+  int nrows = WINDOW_TOTAL_LINES (w);
+
+  if (window_wants_mode_line (w))
+    nrows--;
+  if (window_wants_tab_line (w))
+    top_skip++;
+  if (window_wants_header_line (w))
+    top_skip++;
+
+  if (top_skip_out)
+    *top_skip_out = top_skip;
+  return nrows - top_skip;
+}
+
 /* Apply TTY character-based scroll bar glyphs for window W into the
    desired matrix of its frame.  Called recursively for the window tree.  */
 static void
@@ -4045,22 +4063,11 @@ tty_apply_scroll_bar_glyphs_for_window (struct frame *f, struct window *w)
   if (!matrix)
     return;
 
-  /* Window rows in the frame matrix.  */
   int frame_y_top = w->desired_matrix->matrix_y;
-  int nrows = WINDOW_TOTAL_LINES (w);
-  /* Exclude mode line.  */
-  if (window_wants_mode_line (w))
-    nrows--;
-  /* Skip header/tab line rows at top.  */
-  int top_skip = 0;
-  if (window_wants_tab_line (w))
-    top_skip++;
-  if (window_wants_header_line (w))
-    top_skip++;
-
-  if (nrows <= top_skip)
+  int top_skip;
+  int sb_rows = tty_scroll_bar_rows (w, &top_skip);
+  if (sb_rows <= 0)
     return;
-  int sb_rows = nrows - top_skip;  /* usable rows for scroll bar */
 
   /* Compute the scroll bar column in frame coordinates.  */
   int sb_cols = WINDOW_SCROLL_BAR_COLS (w);
@@ -4177,17 +4184,7 @@ geometry from the current buffer/window state instead.  */)
       if (portion > whole) portion = whole;
     }
 
-  /* Compute the number of usable scroll-bar rows the same way as the
-     renderer: total window lines minus mode line, header line, tab line.  */
-  int nrows = WINDOW_TOTAL_LINES (w);
-  if (window_wants_mode_line (w))
-    nrows--;
-  int top_skip = 0;
-  if (window_wants_tab_line (w))
-    top_skip++;
-  if (window_wants_header_line (w))
-    top_skip++;
-  int sb_rows = nrows - top_skip;
+  int sb_rows = tty_scroll_bar_rows (w, NULL);
   if (sb_rows <= 0)
     return Qnil;
 
@@ -4207,15 +4204,8 @@ Y is a frame-relative row number.  */)
   struct window *w = decode_live_window (window);
   CHECK_FIXNUM (y);
 
-  int nrows = WINDOW_TOTAL_LINES (w);
-  if (window_wants_mode_line (w))
-    nrows--;
-  int top_skip = 0;
-  if (window_wants_tab_line (w))
-    top_skip++;
-  if (window_wants_header_line (w))
-    top_skip++;
-  int sb_rows = nrows - top_skip;
+  int top_skip;
+  int sb_rows = tty_scroll_bar_rows (w, &top_skip);
   if (sb_rows <= 0)
     return Qhandle;
 
