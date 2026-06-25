@@ -2932,13 +2932,16 @@ This face is used to customize the appearance of the margin areas."
   :group 'frames
   :group 'basic-faces)
 
-(defface scroll-bar '((t nil))
+(defface scroll-bar
+  '((((type tty)) :inherit mode-line-active)
+    (t nil))
   "Basic face for the scroll bar colors under X and on TTY frames.
 The foreground color is used for the scroll-bar thumb (the draggable
 portion) and the background color is used for the track (the gutter).
-On TTY frames the thumb is rendered with the foreground and background
-colors swapped relative to the track, so setting the foreground and
-background of this face controls both elements."
+On TTY frames, this face inherits from `mode-line-active' by default,
+and the thumb is rendered with the foreground and background colors
+swapped relative to the track, so setting the foreground and background
+of this face controls both elements."
   :version "21.1"
   :group 'frames
   :group 'basic-faces)
