@@ -7050,8 +7050,13 @@ change_frame_size_1 (struct frame *f, int new_width, int new_height,
       f->new_size_p = false;
       /* adjust_frame_size wants its arguments in terms of text_width
 	 and text_height, so convert them here.  For pathologically
-	 small frames, the resulting values may be negative though.  */
-      adjust_frame_size (f, FRAME_PIXEL_TO_TEXT_WIDTH (f, new_width),
+	 small frames, the resulting values may be negative though.
+	 TTY root frames use the whole terminal grid as their frame text
+	 width; window body geometry accounts for any scroll-bar columns.  */
+      int text_width = (is_tty_root_frame (f) && FRAME_TERMCAP_P (f)
+			? new_width
+			: FRAME_PIXEL_TO_TEXT_WIDTH (f, new_width));
+      adjust_frame_size (f, text_width,
 			 FRAME_PIXEL_TO_TEXT_HEIGHT (f, new_height), 5,
 			 pretend, Qchange_frame_size);
     }

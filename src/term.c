@@ -4421,10 +4421,26 @@ tty_set_scroll_bar_default_width (struct frame *f)
 void
 tty_adjust_frame_for_scroll_bars (struct frame *f, Lisp_Object parameter)
 {
-  int text_cols = max (0, FrameCols (FRAME_TTY (f)) - FRAME_SCROLL_BAR_COLS (f));
+  if (!FRAME_PARENT_FRAME (f))
+    {
+      int width, height;
 
-  adjust_frame_size (f, text_cols * FRAME_COLUMN_WIDTH (f), -1,
-		     3, 0, parameter);
+      get_tty_size (fileno (FRAME_TTY (f)->input), &width, &height);
+      if (width > 5 && height > 2
+	  && (width != FRAME_TOTAL_COLS (f)
+	      || height != FRAME_TOTAL_LINES (f)))
+	change_frame_size (f, width, height, false, false, false);
+    }
+
+  /* TTY scroll bars occupy terminal cells, but they are still part of
+     the terminal text grid.  The generic frame size conversion code
+     subtracts scroll-bar area from FRAME_COLS, which is right for GUI
+     text areas but makes `frame-width' one column narrower on TTYs.
+     Keep the frame width at the physical terminal width; window body
+     geometry reserves the scroll-bar column separately.  */
+  FRAME_COLS (f) = FRAME_TOTAL_COLS (f);
+  FRAME_TEXT_WIDTH (f) = FRAME_PIXEL_WIDTH (f);
+
   adjust_frame_glyphs (f);
   SET_FRAME_GARBAGED (f);
 

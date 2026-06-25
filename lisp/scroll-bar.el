@@ -128,10 +128,11 @@ Setting the variable with a customization buffer also takes effect."
   "Apply `scroll-bar-mode' to TTY frames at startup.
 TTY frames don't go through the GUI frame-parameter initialization
 that would apply `scroll-bar-mode' during frame creation, so we
-apply it explicitly here via `window-setup-hook'."
+apply it explicitly here from startup hooks."
   (when scroll-bar-mode
     (set-scroll-bar-mode scroll-bar-mode)))
 
+(add-hook 'after-init-hook #'scroll-bar--tty-frame-setup -90)
 (add-hook 'window-setup-hook #'scroll-bar--tty-frame-setup)
 
 (defun get-scroll-bar-mode ()

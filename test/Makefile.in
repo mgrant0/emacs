@@ -242,7 +242,8 @@ define test_template
   ## The similar name is FOO.c if FOO begins with '{lib-,}src/', FOO.el
   ## otherwise.  Although this heuristic does not identify all the
   ## dependencies, it is better than nothing.
-  ifeq (,$(patsubst %-tests,,$(1))$(findstring -tests/,$(1)))
+  ## lisp/scroll-bar-tty-tests has explicit dependencies below.
+  ifeq (,$(patsubst %-tests,,$(1))$(findstring -tests/,$(1))$(filter lisp/scroll-bar-tty-tests,$(1)))
     $(1).log: $(patsubst %-tests,$(srcdir)/../%,$(1))$(if \
 					$(patsubst src/%,,$(patsubst lib-src/%,,$(1))),.el,.c)
     $(notdir $(1).log): $(1).log
@@ -258,6 +259,9 @@ define test_template
 endef
 
 $(foreach test,${TESTS},$(eval $(call test_template,${test})))
+
+lisp/scroll-bar-tty-tests.log: ../lisp/scroll-bar.el ../lisp/startup.el \
+  ../src/dispnew.c ../src/term.c ../src/window.c
 
 ## Get the tests for only a specific directory.
 SUBDIRS = $(sort $(shell cd ${srcdir} && find lib-src lisp misc src -type d \

@@ -907,13 +907,26 @@ adjust_frame_size (struct frame *f, int new_text_width, int new_text_height,
        with the WM).  */
     inhibit_horizontal = inhibit_vertical = inhibit == 5;
 
-  new_native_width = ((inhibit_horizontal && inhibit < 5)
-		      ? old_native_width
-		      : max (FRAME_TEXT_TO_PIXEL_WIDTH (f, new_text_width),
-			     min_inner_width
-			     + 2 * FRAME_INTERNAL_BORDER_WIDTH (f)));
-  new_inner_width = new_native_width - 2 * FRAME_INTERNAL_BORDER_WIDTH (f);
-  new_text_width = FRAME_PIXEL_TO_TEXT_WIDTH (f, new_native_width);
+  if (is_tty_root_frame (f) && FRAME_TERMCAP_P (f))
+    {
+      new_native_width = ((inhibit_horizontal && inhibit < 5)
+			  ? old_native_width
+			  : max (new_text_width,
+				 min_inner_width
+				 + 2 * FRAME_INTERNAL_BORDER_WIDTH (f)));
+      new_inner_width = new_native_width - 2 * FRAME_INTERNAL_BORDER_WIDTH (f);
+      new_text_width = new_inner_width;
+    }
+  else
+    {
+      new_native_width = ((inhibit_horizontal && inhibit < 5)
+			  ? old_native_width
+			  : max (FRAME_TEXT_TO_PIXEL_WIDTH (f, new_text_width),
+				 min_inner_width
+				 + 2 * FRAME_INTERNAL_BORDER_WIDTH (f)));
+      new_inner_width = new_native_width - 2 * FRAME_INTERNAL_BORDER_WIDTH (f);
+      new_text_width = FRAME_PIXEL_TO_TEXT_WIDTH (f, new_native_width);
+    }
   new_text_cols = new_text_width / unit_width;
 
   new_native_height = ((inhibit_vertical && inhibit < 5)

@@ -1704,6 +1704,14 @@ please check its value")
       (clear-face-cache)))
 
   (setq after-init-time (current-time))
+  ;; User init file can set term-file-prefix to nil to prevent this.
+  ;; Do this before `after-init-hook' so that after-init prompts such
+  ;; as `desktop-read' see finalized TTY frame parameters.
+  (unless (or noninteractive
+              initial-window-system
+              (daemonp))
+    (tty-run-terminal-initialization (selected-frame) nil t))
+
   ;; Display any accumulated warnings after all functions in
   ;; `after-init-hook' like `desktop-read' have finalized possible
   ;; changes in the window configuration.
@@ -1714,13 +1722,6 @@ please check its value")
       (with-current-buffer "*scratch*"
 	(if (eq major-mode 'fundamental-mode)
 	    (funcall initial-major-mode))))
-
-  ;; Load library for our terminal type.
-  ;; User init file can set term-file-prefix to nil to prevent this.
-  (unless (or noninteractive
-              initial-window-system
-              (daemonp))
-    (tty-run-terminal-initialization (selected-frame) nil t))
 
   ;; Update the out-of-memory error message based on user's key bindings
   ;; for save-some-buffers.

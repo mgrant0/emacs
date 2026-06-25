@@ -210,12 +210,15 @@ accidentally inflate sb_rows by ignoring the header-line."
 ;; Skipped on MS Windows / MS-DOS (no usable pty).
 
 (defun tty-sb-test--child-screen-rows (width height setup-form
-                                       &optional sentinel timeout)
-  "Run child emacs -Q -nw with SETUP-FORM; return per-row screen strings.
+                                       &optional sentinel timeout
+                                       command-args environment)
+  "Run child emacs -nw with SETUP-FORM; return per-row screen strings.
 WIDTH and HEIGHT fix the pty size.  SENTINEL is a string to wait for in the
 child's output (default \"READY\"); TIMEOUT is the maximum seconds to wait
 (default 10).  Returns a list of HEIGHT strings, each up to WIDTH characters,
 with `font-lock-face' text properties as written by `term-emulate-terminal'.
+COMMAND-ARGS, if non-nil, replaces the default -Q --eval invocation.
+ENVIRONMENT is prepended to `process-environment' while starting the child.
 Signals an ERT failure if the sentinel is not found within TIMEOUT seconds."
   (require 'term)
   (with-temp-buffer
@@ -224,12 +227,15 @@ Signals an ERT failure if the sentinel is not found within TIMEOUT seconds."
     (remove-function (local 'window-adjust-process-window-size-function)
                      'term-maybe-reset-size)
     (let* ((emacs-bin (expand-file-name invocation-name invocation-directory))
+           (args (or command-args
+                     (list "-Q" "-nw"
+                           "--eval"
+                           (prin1-to-string setup-form))))
+           (process-environment
+            (append environment process-environment))
            (proc (get-buffer-process
                   (term-exec (current-buffer) "tty-sb-child"
-                             emacs-bin nil
-                             (list "-Q" "-nw"
-                                   "--eval"
-                                   (prin1-to-string setup-form))))))
+                             emacs-bin nil args))))
       (term-char-mode)
       (setq term-width  width
             term-height height)
@@ -340,12 +346,152 @@ When SCROLL is non-nil, scroll the child buffer before scraping the screen."
       (string-match "GEOM " text)
       (read (substring text (match-end 0))))))
 
+(defun tty-sb-test--wait-for-file (file timeout)
+  "Wait up to TIMEOUT seconds for FILE to exist."
+  (let ((deadline (+ (float-time) timeout)))
+    (while (and (not (file-exists-p file))
+                (< (float-time) deadline))
+      (sleep-for 0.1))
+    (file-exists-p file)))
+
+(defun tty-sb-test--tmux-output (tmux socket &rest args)
+  "Run TMUX with SOCKET and ARGS, returning its trimmed output."
+  (with-temp-buffer
+    (let ((status (apply #'call-process
+                         tmux nil t nil
+                         "-L" socket "-f" "/dev/null" args)))
+      (unless (zerop status)
+        (ert-fail (format "tmux %S failed: %s"
+                          args (buffer-string)))))
+    (string-trim (buffer-string))))
+
+(defun tty-sb-test--tmux-call (tmux socket &rest args)
+  "Run TMUX with SOCKET and ARGS, returning (STATUS OUTPUT)."
+  (with-temp-buffer
+    (let ((status (apply #'call-process
+                         tmux nil t nil
+                         "-L" socket "-f" "/dev/null" args)))
+      (list status (string-trim (buffer-string))))))
+
+(defun tty-sb-test--tmux-after-init-prompt-case ()
+  "Check real tmux startup geometry before an after-init prompt."
+  (when (memq system-type '(windows-nt ms-dos))
+    (ert-skip "No usable pty on this system"))
+  (let ((tmux (executable-find "tmux")))
+    (unless tmux
+      (ert-skip "tmux is not installed"))
+    (let* ((width 100)
+           (height 30)
+           (socket (format "tty-sb-%d-%d" (emacs-pid) (random)))
+           (home (make-temp-file "tty-sb-tmux-home" t))
+           (geom-file (make-temp-file "tty-sb-tmux-geom"))
+           (init-file (expand-file-name ".emacs" home))
+           (emacs-bin (expand-file-name invocation-name invocation-directory)))
+      (delete-file geom-file)
+      (unwind-protect
+          (progn
+            (with-temp-file init-file
+              (insert ";;; .emacs --- TTY scrollbar tmux startup test\n")
+              (prin1
+               `(progn
+                  (setq inhibit-startup-screen t)
+                  (menu-bar-mode -1)
+                  (with-current-buffer
+                      (get-buffer-create " *tty-sb-tmux-startup*")
+                    (setq mode-line-format "MODELINE")
+                    (erase-buffer)
+                    (insert "tmux startup prompt test\n")
+                    (switch-to-buffer (current-buffer))
+                    (goto-char (point-min)))
+                  (add-hook
+                   'after-init-hook
+                   (lambda ()
+                     (set-frame-size nil ,(1- width) ,height))
+                   -95)
+                  (add-hook
+                   'after-init-hook
+                   (lambda ()
+                     (let* ((win (selected-window))
+                            (bars (window-scroll-bars win))
+                            (geom (list (frame-total-cols)
+                                        (frame-width)
+                                        (window-total-width
+                                         (frame-root-window))
+                                        (window-total-width win)
+                                        (window-body-width win)
+                                        (nth 1 bars)
+                                        (frame-parameter
+                                         nil 'vertical-scroll-bars)
+                                        scroll-bar-mode)))
+                       (write-region (prin1-to-string geom) nil
+                                     ,geom-file nil 'silent)
+                       (with-current-buffer " *tty-sb-tmux-startup*"
+                         (erase-buffer)
+                         (insert "GEOM " (prin1-to-string geom) "\n")
+                         (goto-char (point-min)))
+                       (redisplay t)
+                       (y-or-n-p "Probe prompt? "))))
+                  nil)
+               (current-buffer))
+              (insert "\n"))
+            (pcase-let
+                ((`(,status ,output)
+                  (tty-sb-test--tmux-call
+                   tmux socket
+                   "new-session" "-d"
+                   "-x" (number-to-string width)
+                   "-y" (number-to-string height)
+                   (format "env HOME=%s %s -nw --no-site-file"
+                           (shell-quote-argument home)
+                           (shell-quote-argument emacs-bin)))))
+              (unless (zerop status)
+                (if (string-match-p "Operation not permitted" output)
+                    (ert-skip output)
+                  (ert-fail (format "tmux new-session failed: %s"
+                                    output)))))
+            (unless (tty-sb-test--wait-for-file geom-file 10)
+              (ert-fail "child Emacs did not write startup geometry"))
+            (let* ((pane-size
+                    (tty-sb-test--tmux-output
+                     tmux socket "display-message" "-p"
+                     "#{pane_width} #{pane_height}"))
+                   (pane-width (string-to-number
+                                (car (split-string pane-size))))
+                   (geom
+                    (with-temp-buffer
+                      (insert-file-contents geom-file)
+                      (read (current-buffer))))
+                   (frame-total (nth 0 geom))
+                   (frame-width (nth 1 geom))
+                   (root-total (nth 2 geom))
+                   (win-total (nth 3 geom))
+                   (win-body (nth 4 geom))
+                   (sb-cols (nth 5 geom))
+                   (frame-vertical-bars (nth 6 geom))
+                   (mode (nth 7 geom)))
+              (ert-info ((format "tmux startup pane=%s geometry=%S"
+                                 pane-size geom))
+                (should (= pane-width width))
+                (should (= frame-width pane-width))
+                (should (= frame-total pane-width))
+                (should (= root-total pane-width))
+                (should (= win-total pane-width))
+                (should (= sb-cols 1))
+                (should (= win-body (1- pane-width)))
+                (should (eq frame-vertical-bars 'right))
+                (should mode))))
+        (ignore-errors
+          (call-process tmux nil nil nil
+                        "-L" socket "-f" "/dev/null" "kill-server"))
+        (ignore-errors (delete-directory home t))
+        (ignore-errors (delete-file geom-file))))))
+
 (defun tty-sb-test--frame-width-case (side scroll-bar-width)
   "Check TTY frame geometry for scroll-bar SIDE and SCROLL-BAR-WIDTH.
 This verifies the invariant that prevents terminal wrapping/banding:
-enabling scroll bars keeps the frame total width equal to the
-no-scrollbar terminal width, and reduces the text width by the number
-of TTY scroll-bar columns."
+enabling scroll bars keeps the frame text and total widths equal to the
+terminal width, and reduces only the window body width by the number of
+TTY scroll-bar columns."
   (when (memq system-type '(windows-nt ms-dos))
     (ert-skip "No usable pty on this system"))
   (let* ((width 90)
@@ -410,10 +556,132 @@ of TTY scroll-bar columns."
       (should (= root-total base-total))
       (should (= win-total base-total))
       (should (= sb-cols scroll-bar-width))
-      (should (= frame-width (- base-total sb-cols)))
+      (should (= frame-width base-total))
       (should (= win-body (- base-total sb-cols)))
       (should (eq actual-side side))
       (should (= actual-scroll-bar-width scroll-bar-width)))))
+
+(defun tty-sb-test--after-init-prompt-case ()
+  "Check TTY scroll bars are applied before after-init prompts."
+  (when (memq system-type '(windows-nt ms-dos))
+    (ert-skip "No usable pty on this system"))
+  (let* ((width 90)
+         (height 24)
+         (home (make-temp-file "tty-sb-home" t))
+         (init-file (expand-file-name ".emacs" home)))
+    (unwind-protect
+        (progn
+          (with-temp-file init-file
+            (insert ";;; .emacs --- TTY scrollbar startup test  -*- lexical-binding: t -*-\n")
+            (prin1
+             `(progn
+                (setq inhibit-startup-screen t)
+                (menu-bar-mode -1)
+                (with-current-buffer
+                    (get-buffer-create " *tty-sb-after-init*")
+                  (setq mode-line-format "MODELINE")
+                  (erase-buffer)
+                  (insert "after-init prompt test\n")
+                  (switch-to-buffer (current-buffer))
+                  (goto-char (point-min)))
+                (add-hook
+                 'after-init-hook
+                 (lambda ()
+                   (let* ((win (selected-window))
+                          (bars (window-scroll-bars win))
+                          (geom (list (frame-total-cols)
+                                      (frame-width)
+                                      (window-total-width
+                                       (frame-root-window))
+                                      (window-total-width win)
+                                      (window-body-width win)
+                                      (nth 1 bars)
+                                      (frame-parameter
+                                       nil 'vertical-scroll-bars)
+                                      scroll-bar-mode)))
+                     (with-current-buffer " *tty-sb-after-init*"
+                       (erase-buffer)
+                       (insert "GEOM " (prin1-to-string geom) "\n")
+                       (goto-char (point-min)))
+                     (redisplay t)
+                     (message "GEOM %S" geom)
+                     (y-or-n-p "Probe prompt? "))))
+                nil)
+             (current-buffer))
+            (insert "\n"))
+          (let* ((rows (tty-sb-test--child-screen-rows
+                        width height nil "GEOM" 10
+                        '("--no-site-file" "-nw")
+                        (list (concat "HOME=" home))))
+                 (geom (tty-sb-test--read-geom rows))
+                 (frame-total (nth 0 geom))
+                 (frame-width (nth 1 geom))
+                 (root-total (nth 2 geom))
+                 (win-total (nth 3 geom))
+                 (win-body (nth 4 geom))
+                 (sb-cols (nth 5 geom))
+                 (frame-vertical-bars (nth 6 geom))
+                 (mode (nth 7 geom)))
+            (ert-info ((format "after-init prompt geometry: %S" geom))
+              (should (= frame-width frame-total))
+              (should (= root-total frame-total))
+              (should (= win-total frame-total))
+              (should (= sb-cols 1))
+              (should (= win-body (1- frame-total)))
+              (should (eq frame-vertical-bars 'right))
+              (should mode))))
+      (delete-directory home t))))
+
+(defun tty-sb-test--default-frame-width-case ()
+  "Check default TTY startup keeps frame width full with a scroll bar."
+  (when (memq system-type '(windows-nt ms-dos))
+    (ert-skip "No usable pty on this system"))
+  (let* ((width 90)
+         (height 24)
+         (setup-form
+          `(progn
+             (setq inhibit-startup-screen t)
+             (menu-bar-mode -1)
+             (with-current-buffer (get-buffer-create " *tty-sb-default*")
+               (setq mode-line-format "MODELINE")
+               (erase-buffer)
+               (switch-to-buffer (current-buffer))
+               (goto-char (point-min)))
+             (add-hook
+              'window-setup-hook
+              (lambda ()
+                (let* ((win (selected-window))
+                       (bars (window-scroll-bars win))
+                       (geom (list (frame-total-cols)
+                                   (frame-width)
+                                   (window-total-width
+                                    (frame-root-window))
+                                   (window-total-width win)
+                                   (window-body-width win)
+                                   (nth 0 bars)
+                                   (frame-parameter
+                                    nil 'vertical-scroll-bars)
+                                   scroll-bar-mode)))
+                  (redisplay t)
+                  (message "GEOM %S" geom)))
+              t)))
+         (rows (tty-sb-test--child-screen-rows
+                width height setup-form "GEOM"))
+         (geom (tty-sb-test--read-geom rows))
+         (frame-total (nth 0 geom))
+         (frame-width (nth 1 geom))
+         (root-total (nth 2 geom))
+         (win-total (nth 3 geom))
+         (win-body (nth 4 geom))
+         (frame-vertical-bars (nth 6 geom))
+         (mode (nth 7 geom)))
+    (ert-info ((format "default TTY geometry: %S" geom))
+      (should (= frame-width frame-total))
+      (should (= root-total frame-total))
+      (should (= win-total frame-total))
+      (should (= win-body (1- frame-total)))
+      (should (eq frame-vertical-bars 'right))
+      (should mode))))
 
 (defun tty-sb-test--side-width-change-case ()
   "Check TTY scroll-bar geometry after changing side and width repeatedly."
@@ -484,7 +752,7 @@ of TTY scroll-bar columns."
               (inside-left (nth 6 snap)))
           (should (= frame-total base-total))
           (should (= sb-cols requested-width))
-          (should (= frame-width (- base-total sb-cols)))
+          (should (= frame-width base-total))
           (should (= win-body (- base-total sb-cols)))
           (should (= inside-left (if (eq side 'left) sb-cols 0))))))
       (let ((final (car (last snapshots))))
@@ -504,12 +772,24 @@ of TTY scroll-bar columns."
   "Right scroll bar: the header spans the frame, body rows reserve column 79."
   (tty-sb-test--header-layout-case 'right))
 
+(ert-deftest tty-sb-integration-default-frame-full-width ()
+  "Default TTY startup: frame width is full and scroll bar is enabled."
+  (tty-sb-test--default-frame-width-case))
+
+(ert-deftest tty-sb-integration-after-init-prompt-scroll-bar ()
+  "TTY startup prompts already have scroll-bar geometry applied."
+  (tty-sb-test--after-init-prompt-case))
+
+(ert-deftest tty-sb-integration-tmux-startup-prompt-full-width ()
+  "Real tmux startup prompt: frame width matches the terminal immediately."
+  (tty-sb-test--tmux-after-init-prompt-case))
+
 (ert-deftest tty-sb-integration-frame-width-right ()
-  "Right scroll bar: frame text width shrinks within the terminal width."
+  "Right scroll bar: window body shrinks within the terminal width."
   (tty-sb-test--frame-width-case 'right 1))
 
 (ert-deftest tty-sb-integration-frame-width-left ()
-  "Left scroll bar: frame text width shrinks within the terminal width."
+  "Left scroll bar: window body shrinks within the terminal width."
   (tty-sb-test--frame-width-case 'left 1))
 
 (ert-deftest tty-sb-integration-frame-width-wide-scroll-bar ()
