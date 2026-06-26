@@ -6028,22 +6028,15 @@ realize_basic_faces (struct frame *f)
       realize_named_face (f, Qtab_line_inactive, TAB_LINE_INACTIVE_FACE_ID);
       realize_named_face (f, Qmargin, MARGIN_FACE_ID);
       /* Realize the scroll-bar thumb face as an internal face derived from
-	 the scroll-bar face with inverse-video toggled.  On TTY frames,
-	 scroll-bar inherits from fringe by default; the track is rendered
-	 as normal space glyphs in the scroll-bar face, while the thumb is
-	 rendered as inverse video of that face.  There is no user-visible
-	 defface for this face; it is computed entirely from the scroll-bar
-	 face.  */
+	 the default face with inverse-video toggled.  On TTY frames,
+	 the track is rendered as normal space glyphs in the scroll-bar
+	 face, whose default attributes fall back to the default face.  The
+	 thumb is rendered with an inverse default face, so it remains
+	 visible even when the scroll-bar track has the same background as
+	 buffer text.  There is no user-visible defface for this face.  */
       {
 	Lisp_Object thumb_attrs[LFACE_VECTOR_SIZE];
 	get_lface_attributes_no_remap (f, Qdefault, thumb_attrs, true);
-	Lisp_Object sb_lface_attrs[LFACE_VECTOR_SIZE];
-	get_lface_attributes_no_remap (f, Qscroll_bar, sb_lface_attrs, true);
-	int i;
-	for (i = 1; i < LFACE_VECTOR_SIZE; i++)
-	  if (EQ (sb_lface_attrs[i], Qreset))
-	    sb_lface_attrs[i] = thumb_attrs[i];
-	merge_face_vectors (NULL, f, sb_lface_attrs, thumb_attrs, 0);
 	thumb_attrs[LFACE_INVERSE_INDEX]
 	  = EQ (thumb_attrs[LFACE_INVERSE_INDEX], Qt) ? Qnil : Qt;
 	realize_face (FRAME_FACE_CACHE (f), thumb_attrs, SCROLL_BAR_THUMB_FACE_ID);
