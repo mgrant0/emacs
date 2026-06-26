@@ -2933,14 +2933,14 @@ This face is used to customize the appearance of the margin areas."
   :group 'basic-faces)
 
 (defface scroll-bar
-  '((((type tty)) :inherit default :inverse-video t)
+  '((((type tty)) :inherit fringe)
     (t nil))
   "Basic face for the scroll bar colors under X and on TTY frames.
 The foreground color is used for the scroll-bar thumb (the draggable
 portion) and the background color is used for the track (the gutter).
-On TTY frames, this face is inverse video by default; the track is
-rendered with ordinary space glyphs in this face, and the thumb is
-rendered with this face's foreground color."
+On TTY frames, this face inherits from `fringe' by default; the track
+is rendered with ordinary space glyphs in this face, and the thumb is
+rendered as inverse video of this face."
   :version "21.1"
   :group 'frames
   :group 'basic-faces)

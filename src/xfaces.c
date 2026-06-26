@@ -6028,12 +6028,12 @@ realize_basic_faces (struct frame *f)
       realize_named_face (f, Qtab_line_inactive, TAB_LINE_INACTIVE_FACE_ID);
       realize_named_face (f, Qmargin, MARGIN_FACE_ID);
       /* Realize the scroll-bar thumb face as an internal face derived from
-	 the scroll-bar face with inverse-video toggled.  On TTY frames this
-	 makes the thumb show the scroll-bar foreground color (= thumb color)
-	 as the displayed color of the space glyph, matching the X convention
-	 that the scroll-bar face foreground is the thumb and its background
-	 is the track.  There is no user-visible defface for this face;
-	 it is computed entirely from the scroll-bar face.  */
+	 the scroll-bar face with inverse-video toggled.  On TTY frames,
+	 scroll-bar inherits from fringe by default; the track is rendered
+	 as normal space glyphs in the scroll-bar face, while the thumb is
+	 rendered as inverse video of that face.  There is no user-visible
+	 defface for this face; it is computed entirely from the scroll-bar
+	 face.  */
       {
 	Lisp_Object thumb_attrs[LFACE_VECTOR_SIZE];
 	get_lface_attributes_no_remap (f, Qdefault, thumb_attrs, true);
