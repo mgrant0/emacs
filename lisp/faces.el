@@ -2938,8 +2938,32 @@ This face is used to customize the appearance of the margin areas."
 The foreground color is used for the scroll-bar thumb (the draggable
 portion) and the background color is used for the track (the gutter).
 On TTY frames, the track is rendered with ordinary space glyphs in
-this face, and the thumb is rendered as inverse video of the default
-face."
+this face, and the thumb is rendered with inverse video so its visible
+color comes from the foreground of this face.
+
+By default on TTY frames, the track can have the same color as the
+frame background, which can make the track difficult to see and click.
+To use the mode-line colors for TTY scroll bars, consider adding this
+to your init file:
+
+(custom-set-faces
+ \='(scroll-bar
+   ((((type tty))
+     (:inherit mode-line-active)))))
+
+For explicit colors:
+
+(set-face-attribute \='scroll-bar nil
+                    :foreground \"red\"
+                    :background \"blue\")
+
+For TTY-only customization across future frames,
+`custom-set-faces' is preferable:
+
+(custom-set-faces
+ \='(scroll-bar
+    ((((type tty))
+      (:foreground \"red\" :background \"blue\")))))"
   :version "21.1"
   :group 'frames
   :group 'basic-faces)
