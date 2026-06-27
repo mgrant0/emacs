@@ -2623,7 +2623,7 @@ build_frame_matrix_from_leaf_window (struct glyph_matrix *frame_matrix, struct w
 	 horizontally adjacent windows.  For TTY frames we always insert
 	 '|' at LAST_AREA-1: with a right scroll bar, window_body_width
 	 now reserves that column explicitly so the border and the scroll
-	 bar indicator (one column further right) are visually distinct.  */
+	 bar glyphs (one column further right) are visually distinct.  */
       if (!WINDOW_RIGHTMOST_P (w)
 	  && (!WINDOW_HAS_VERTICAL_SCROLL_BAR_ON_RIGHT (w)
 	      || !FRAME_WINDOW_P (f)))
@@ -2711,7 +2711,7 @@ build_frame_matrix_from_leaf_window (struct glyph_matrix *frame_matrix, struct w
 	      struct glyph *border;
 	      /* For TTY frames with a right scroll bar, the normal
 		 border position (LAST_AREA - 1) is used for the scroll
-		 bar indicator; tty_apply_scroll_bar_glyphs shifts the SB
+		 bar column; tty_apply_scroll_bar_glyphs shifts the SB
 		 one column left to make room.  Place '|' at LAST_AREA[0]
 		 (the SB slot) so the layout is [content][SB][|].  */
 	      if (!FRAME_WINDOW_P (f)
@@ -4042,9 +4042,10 @@ tty_apply_scroll_bar_glyphs_for_window (struct frame *f, struct window *w)
     }
 
   /* Leaf window: draw scroll bar if active.  Skip minibuffer windows;
-     they occupy the last terminal row and writing 80 glyphs there would
-     trigger cmcheckmagic.  Minibuffer windows don't show scroll bars on
-     GUI either, so this is consistent behaviour.  */
+     they occupy the last terminal row, and extending that row through the
+     rightmost column can make redisplay write the bottom-right cell and
+     trigger cmcheckmagic.  Minibuffer windows don't show scroll bars on GUI
+     either, so this is consistent behaviour.  */
   if (MINI_WINDOW_P (w))
     return;
   if (!WINDOW_HAS_VERTICAL_SCROLL_BAR (w))
@@ -4080,7 +4081,7 @@ tty_apply_scroll_bar_glyphs_for_window (struct frame *f, struct window *w)
   /* For a right scroll bar on a non-rightmost TTY window, the last
      column of the window allocation holds the '|' border glyph
      (placed there by build_frame_matrix_from_leaf_window).  Shift the
-     SB indicator one column left so the layout becomes
+     scroll-bar column one column left so the layout becomes
      [content][SB][|] rather than [content][|][SB].  */
   bool right_border
     = (!FRAME_WINDOW_P (f)
