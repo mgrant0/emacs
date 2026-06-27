@@ -357,8 +357,8 @@ area) and `scroll-bar-movement' events (when the mouse is over the
 scroll bar itself); only the y coordinate is used to scroll, so moving
 horizontally into the text area while dragging still scrolls correctly.
 
-The grab point — the row within the thumb where the drag was initiated
-— is preserved throughout the drag, so the thumb follows the cursor
+The grab point (the row within the thumb where the drag was initiated)
+is preserved throughout the drag, so the thumb follows the cursor
 rather than jumping to align its top edge with the cursor."
   (interactive "e")
   (let* ((start-pos    (event-start event))

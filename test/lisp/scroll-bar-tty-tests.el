@@ -189,7 +189,7 @@ accidentally inflate sb_rows by ignoring the header-line."
                (te   (cdr geom)))
           ;; Thumb range must be valid.
           (should (< ts te))
-          ;; Thumb must be entirely within [0, body-ht) — i.e., the SB body.
+          ;; Thumb must be entirely within [0, body-ht) i.e. the SB body.
           (should (>= ts 0))
           (should (<= te body-ht)))))))
 

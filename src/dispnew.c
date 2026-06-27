@@ -4147,9 +4147,9 @@ thumb occupies rows START through END-1 (exclusive).
 Returns nil if the buffer is empty or the window has no body rows.
 When scroll-bar data has been cached by a prior redisplay this function
 uses the same formula as the TTY renderer, so its result always agrees
-with what is drawn on screen.  When no cached data is available yet
-\(e.g. in batch mode or before the first redisplay) it derives the
-geometry from the current buffer/window state instead.  */)
+with what is drawn on screen.  When no cached data is available yet (e.g.
+in batch mode or before the first redisplay) it derives the geometry from
+the current buffer/window state instead.  */)
   (Lisp_Object window)
 {
   struct window *w = decode_live_window (window);
@@ -4159,7 +4159,7 @@ geometry from the current buffer/window state instead.  */)
   if (VECTORP (sb_data) && ASIZE (sb_data) >= 3
       && FIXNUMP (AREF (sb_data, 0)))
     {
-      /* Cached values from the last redisplay — most accurate.  */
+      /* Cached values from the last redisplay.  */
       portion  = XFIXNUM (AREF (sb_data, 0));
       whole    = XFIXNUM (AREF (sb_data, 1));
       position = XFIXNUM (AREF (sb_data, 2));
