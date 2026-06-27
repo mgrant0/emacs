@@ -1107,17 +1107,15 @@ that.
 @cindex mode, Scroll Bar
 @cindex Vertical Scroll Bar
 
-  On both graphical displays and text terminals there is a
-@dfn{vertical scroll bar} on the side of each Emacs window.
+  There is a @dfn{vertical scroll bar} on the side of each Emacs window.
 Some graphical toolkit's scroll bars provide up and down buttons.
-Clicking @kbd{mouse-1} on the these up and down buttons scrolls
-the window by one line at a time (but some toolkits allow you to
-customize the scroll bars to not have those buttons).  Clicking
-@kbd{mouse-1} above or below the scroll bar's inner box scrolls the
-window by nearly the entire height of the window, like @kbd{M-v} and
-@kbd{C-v} respectively (@pxref{Moving Point}).  (This, too, can behave
-differently with some toolkits.)  Dragging the inner box scrolls
-continuously.
+Clicking @kbd{mouse-1} on the these up and down buttons scrolls the
+window by one line at a time (but some toolkits allow you to customize
+the scroll bars to not have those buttons).  Clicking @kbd{mouse-1}
+above or below the scroll bar's inner box scrolls the window by nearly
+the entire height of the window, like @kbd{M-v} and @kbd{C-v}
+respectively (@pxref{Moving Point}).  (This, too, can behave differently
+with some toolkits.)  Dragging the inner box scrolls continuously.
 
   If Emacs is compiled on the X Window System without X toolkit
 support, the scroll bar behaves differently.  Clicking @kbd{mouse-1}

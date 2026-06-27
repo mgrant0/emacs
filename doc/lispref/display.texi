@@ -5142,7 +5142,7 @@ bar.)  @var{horizontal-type} is either @code{bottom} or @code{nil}
 
 @defun frame-scroll-bar-width &optional frame
 This function returns the width of vertical scroll bars of @var{frame}
-in pixels, or in character columns on text terminal frames.
+in pixels, or in character columns on text terminal.
 @end defun
 
 @defun frame-scroll-bar-height &optional frame
@@ -5159,7 +5159,7 @@ for window @var{window}.  If @var{window} is @code{nil}, the selected
 window is used.
 
 @var{width} specifies the width of the vertical scroll bar in pixels, or
-in character columns on text terminal frames (@code{nil} means use the
+in character columns on text terminals (@code{nil} means use the
 width specified for the frame).
 @var{vertical-type} specifies whether to have a vertical scroll bar and,
 if so, where.  The possible values are @code{left}, @code{right},

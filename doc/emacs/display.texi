@@ -175,8 +175,7 @@ scroll the current window by one line at a time.  If you intend to use
 any of these commands, you might want to give them key bindings
 (@pxref{Init Rebinding}).
 
-  On graphical displays and text terminals that support scroll bars,
-you can also scroll a window using the scroll bar; @pxref{Scroll
+  You can also scroll a window using the scroll bar; @pxref{Scroll
 Bars}.
 
 @node Recentering

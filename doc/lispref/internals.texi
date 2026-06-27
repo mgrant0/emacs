@@ -2624,9 +2624,7 @@ The types of this window's vertical and horizontal scroll bars.
 @item scroll_bar_width
 @itemx scroll_bar_height
 The width of this window's vertical scroll bar and the height of this
-window's horizontal scroll bar.  On text terminal frames, the width of
-vertical scroll bars is measured in character columns; otherwise, these
-values are measured in pixels.
+window's horizontal scroll bar, in pixels on graphical terminals.
 
 @item left_margin_cols
 @itemx right_margin_cols
