@@ -2946,22 +2946,22 @@ frame background, which can make the track difficult to see and click.
 To use the mode-line colors for TTY scroll bars, consider adding this
 to your init file:
 
-(custom-set-faces
- \='(scroll-bar
+\(custom-set-faces
+ '(scroll-bar
    ((((type tty))
      (:inherit mode-line-active)))))
 
 For explicit colors:
 
-(set-face-attribute \='scroll-bar nil
+\(set-face-attribute 'scroll-bar nil
                     :foreground \"red\"
                     :background \"blue\")
 
 For TTY-only customization across future frames,
 `custom-set-faces' is preferable:
 
-(custom-set-faces
- \='(scroll-bar
+\(custom-set-faces
+ '(scroll-bar
     ((((type tty))
       (:foreground \"red\" :background \"blue\")))))"
   :version "21.1"

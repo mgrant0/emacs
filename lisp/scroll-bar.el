@@ -146,11 +146,13 @@ This command applies to all frames that exist, as well as new
 frames to be created in the future.  This is done by altering the
 frame parameters, so if you (re-)set `default-frame-alist' after
 toggling the scroll bars on or off with this command, the scroll
-bars may reappear on new frames."
+bars may reappear on new frames.  If neither a previous nor a
+platform-default side is available, use the right side."
   :variable ((get-scroll-bar-mode)
              . (lambda (v) (set-scroll-bar-mode
 			    (if v (or previous-scroll-bar-mode
-				      default-frame-scroll-bars))))))
+				      default-frame-scroll-bars
+				      'right))))))
 
 (defun horizontal-scroll-bars-available-p ()
   "Return non-nil when horizontal scroll bars are available on this system."
@@ -184,7 +186,8 @@ created in the future."
   "Toggle whether or not the selected frame has vertical scroll bars.
 With ARG, turn on vertical scroll bars if and only if ARG is positive.
 The variable `scroll-bar-mode' controls which side the scroll bars are on
-when they are turned on; if it is nil, they go on the left."
+when they are turned on.  If it and `default-frame-scroll-bars' are both
+nil, they go on the right."
   (interactive "P")
   (if (null arg)
       (setq arg
@@ -194,7 +197,7 @@ when they are turned on; if it is nil, they go on the left."
    (selected-frame)
    (list (cons 'vertical-scroll-bars
 	       (if (> arg 0)
-		   (or scroll-bar-mode default-frame-scroll-bars))))))
+		   (or scroll-bar-mode default-frame-scroll-bars 'right))))))
 
 (defun toggle-horizontal-scroll-bar (arg)
   "Toggle whether or not the selected frame has horizontal scroll bars.
@@ -315,7 +318,7 @@ If you click outside the slider, the window scrolls to bring the slider there."
 (defun tty-scroll-bar--thumb-geometry (window)
   "Return (START . END) thumb geometry for WINDOW's TTY scroll bar.
 START and END are 0-indexed row numbers; the thumb occupies rows
-\[START, END) (exclusive END).  Delegates to `tty-scroll-bar--thumb-rows',
+[START, END) (exclusive END).  Delegates to `tty-scroll-bar--thumb-rows',
 which uses the same formula as the C renderer, so the result always
 agrees with what is drawn on screen."
   (or (tty-scroll-bar--thumb-rows window)
@@ -328,8 +331,7 @@ agrees with what is drawn on screen."
 
 (defun tty-scroll-bar--event-part (event)
   "Return the scroll bar part recorded in EVENT."
-  (pcase (event-start event)
-    (`(,_ ,_ ,_ ,_ ,part . ,_) part)))
+  (nth 4 (event-start event)))
 
 (defun tty-scroll-bar--set-window-start (window sb-row win-ht)
   "Set WINDOW start from zero-based scroll bar row SB-ROW.
