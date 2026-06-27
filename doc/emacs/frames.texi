@@ -1125,7 +1125,7 @@ in the scroll bar lets you drag the inner box up and down.
 
   On text terminals, scroll bars occupy character cells instead of
 pixels, and the width specified by the @code{scroll-bar-width} frame
-parameter is interpreted as a number of character columns.
+parameter is the number of character columns.
 
 @findex scroll-bar-mode
 @findex toggle-scroll-bar
