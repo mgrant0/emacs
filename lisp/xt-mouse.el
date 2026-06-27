@@ -335,7 +335,7 @@ which is the \"1006\" extension implemented in Xterm >= 277."
                   (list w 'vertical-scroll-bar
                         (cons sb-row win-ht) timestamp part)))
                ;; TTY vertical border `|': generate a vertical-line posn so
-               ;; that [vertical-line down-mouse-1] → mouse-drag-vertical-line
+               ;; that [vertical-line down-mouse-1] -> mouse-drag-vertical-line
                ;; fires.
                ((eq tty-part 'vertical-line)
                 (list w 'vertical-line (cons x y) timestamp))
