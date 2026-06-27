@@ -287,8 +287,7 @@ Menu Bar mode gives each frame a menu bar.  It is enabled by default.
 
 @item
 Scroll Bar mode gives each window a scroll bar.  It is enabled by
-default on graphical terminals and text terminals that support scroll
-bars.
+default on both graphical terminals and text terminals.
 @xref{Scroll Bars}.
 
 @item
