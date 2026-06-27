@@ -7484,7 +7484,7 @@ Setting this variable does not affect existing frames, only new ones.  */);
   Vdefault_frame_alist = Qnil;
 
   DEFVAR_LISP ("default-frame-scroll-bars", Vdefault_frame_scroll_bars,
-	       doc: /* Default position of vertical scroll bars on this window-system.  */);
+	       doc: /* Default position of vertical scroll bars on new frames.  */);
 #if defined HAVE_WINDOW_SYSTEM && !defined HAVE_ANDROID
 #if defined (HAVE_NTGUI) || defined (NS_IMPL_COCOA) || (defined (USE_GTK) && defined (USE_TOOLKIT_SCROLL_BARS))
   /* MS-Windows, macOS, and GTK have scroll bars on the right by
@@ -7493,9 +7493,12 @@ Setting this variable does not affect existing frames, only new ones.  */);
 #else
   Vdefault_frame_scroll_bars = Qleft;
 #endif
-#else /* !HAVE_WINDOW_SYSTEM || HAVE_ANDROID */
+#elif !defined HAVE_ANDROID && !defined MSDOS
+  /* TTY scroll bars are on the right by default.  */
+  Vdefault_frame_scroll_bars = Qright;
+#else /* HAVE_ANDROID || MSDOS */
   Vdefault_frame_scroll_bars = Qnil;
-#endif /* HAVE_WINDOW_SYSTEM && !HAVE_ANDROID */
+#endif
 
   DEFVAR_BOOL ("scroll-bar-adjust-thumb-portion",
                scroll_bar_adjust_thumb_portion_p,
