@@ -2709,15 +2709,15 @@ build_frame_matrix_from_leaf_window (struct glyph_matrix *frame_matrix, struct w
 	  if (GLYPH_CHAR (right_border_glyph) != 0)
 	    {
 	      struct glyph *border;
-	      /* For TTY frames with a right scroll bar, the normal
-		 border position (LAST_AREA - 1) is used for the scroll
-		 bar column; tty_apply_scroll_bar_glyphs shifts the SB
-		 one column left to make room.  Place '|' at LAST_AREA[0]
-		 (the SB slot) so the layout is [content][SB][|].  */
+	      /* For TTY frames with a right scroll bar, place the border
+		 in the last column allocated to the window.  LAST_AREA is
+		 unsuitable here: it excludes the scroll bar on body rows,
+		 but spans the full window on mode, header and tab lines.  It
+		 also moves left for scroll bars wider than one column.  */
 	      if (!FRAME_WINDOW_P (f)
 		  && WINDOW_HAS_VERTICAL_SCROLL_BAR_ON_RIGHT (w))
 		{
-		  border = window_row->glyphs[LAST_AREA];
+		  border = window_row->glyphs[0] + window_matrix->matrix_w - 1;
 		  /* Extend the used count to cover this extra column.  */
 		  int need = (int)(border - frame_row->glyphs[TEXT_AREA]) + 1;
 		  if (frame_row->used[TEXT_AREA] < need)

@@ -335,6 +335,76 @@ When SCROLL is non-nil, scroll the child buffer before scraping the screen."
                        side body-count sb-body-count))
       (should (= sb-body-count body-count)))))
 
+(defun tty-sb-test--split-window-border-case ()
+  "Check right scroll bars and borders in a stacked split-window layout."
+  (when (memq system-type '(windows-nt ms-dos))
+    (ert-skip "No usable pty on this system"))
+  (let* ((width 80)
+         (height 24)
+         (left-width 32)
+         (setup-form
+          `(progn
+             (setq inhibit-startup-screen t)
+             (menu-bar-mode -1)
+             (set-scroll-bar-mode 'right)
+             (let* ((left (selected-window))
+                    (right (split-window-right ,left-width))
+                    (middle (split-window left nil 'below))
+                    (bottom (split-window middle nil 'below)))
+               (let ((wins (list left middle bottom))
+                     (names '("left-top" "left-middle" "left-bottom")))
+                 (while wins
+                   (let ((win (pop wins))
+                         (name (pop names)))
+                     (with-current-buffer (get-buffer-create name)
+                       (erase-buffer)
+                       (setq mode-line-format name
+                             header-line-format
+                             (concat "L" (make-string ,(- left-width 3) ?H)
+                                     "R")
+                             truncate-lines t)
+                       (dotimes (i 100)
+                         (insert (format "%s-%03d %s\n" name i
+                                         ,(make-string width ?x))))
+                       (set-window-buffer win (current-buffer))))))
+               (with-current-buffer (get-buffer-create "right")
+                 (erase-buffer)
+                 (setq mode-line-format "right"
+                       truncate-lines t)
+                 (dotimes (i 100)
+                   (insert (format "right-%03d %s\n" i
+                                   ,(make-string width ?y))))
+                 (set-window-buffer right (current-buffer)))
+               ;; Build the left windows once, then update only the right
+               ;; window so the final frame also exercises preserved rows.
+               (redisplay t)
+               (with-current-buffer (window-buffer right)
+                 (goto-char (point-min))
+                 (insert "changed "))
+               (force-window-update right)
+               (redisplay))
+             (message "READY")))
+         (rows (tty-sb-test--child-screen-rows width height setup-form))
+         (border-col (1- left-width))
+         (border-count 0)
+         (header-count 0))
+    ;; Every non-minibuffer row in the left stack has the border in the
+    ;; final column allocated to that side of the window layout.
+    (cl-loop for row in rows
+             for row-number from 0
+             when (> (length row) border-col)
+             do (ert-info ((format "row %d: %S" row-number row))
+                  (should (eql (aref row border-col) ?|))
+                  (setq border-count (1+ border-count)))
+             when (string-match-p "LHH+R" row)
+             do (progn
+                  (setq header-count (1+ header-count))
+                  (should (eql (aref row (1- border-col)) ?R))))
+    (should (>= border-count 20))
+    ;; The fixed-size term emulator can expose only two of the three
+    ;; headers when its logical screen remains at the default height.
+    (should (>= header-count 2))))
+
 (defun tty-sb-test--read-geom (rows)
   "Read the first printed GEOM list from ROWS."
   (let ((line (cl-find-if (lambda (row)
@@ -771,6 +841,10 @@ TTY scroll-bar columns."
 (ert-deftest tty-sb-integration-header-full-width-right ()
   "Right scroll bar: the header spans the frame, body rows reserve column 79."
   (tty-sb-test--header-layout-case 'right))
+
+(ert-deftest tty-sb-integration-split-window-borders ()
+  "Stacked left windows retain full headers and right-edge borders."
+  (tty-sb-test--split-window-border-case))
 
 (ert-deftest tty-sb-integration-default-frame-full-width ()
   "Default TTY startup: frame width is full and scroll bar is enabled."
